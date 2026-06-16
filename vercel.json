@@ -1,5 +1,9 @@
 {
   "version": 2,
   "cleanUrls": true,
-  "trailingSlash": false
+  "trailingSlash": false,
+  "functions": {
+    "api/getSectors.js":    { "maxDuration": 60 },
+    "api/analyzeStocks.js": { "maxDuration": 60 }
+  }
 }
