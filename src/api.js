@@ -24,5 +24,5 @@ export async function callAnalysis(volumeStocks, rateStocks, date) {
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || '분석 실패');
-  return data.analysis;
+  return data;
 }

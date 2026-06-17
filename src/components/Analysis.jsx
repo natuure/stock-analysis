@@ -15,29 +15,35 @@ function Skeleton() {
   );
 }
 
-function AnalysisResult({ result, vol, rate }) {
-  function Col({ title, items, dataArr }) {
+function AnalysisResult({ result }) {
+  function Col({ title, items }) {
     return (
       <div>
         <div className="analysis-col-title">{title}</div>
         <div className="a-list">
-          {(items || []).map((item, i) => {
-            const s = dataArr.find(d => d.name === item.종목명);
-            const rateStr = s ? `${s.changeRate >= 0 ? '+' : ''}${s.changeRate.toFixed(2)}%` : '';
-            return (
-              <div className="a-item" key={i}>
-                <div className="a-head">
-                  <span className="a-name">{item.종목명}</span>
-                  {rateStr && <span className={`a-rate ${rc(s?.changeRate)}`}>{rateStr}</span>}
-                </div>
-                {item.한줄요약 && <div className="a-summary">{item.한줄요약}</div>}
-                {item.상승원인 && <div className="a-detail"><span className="a-label">상승원인</span>{item.상승원인}</div>}
-                {item.트리거   && <div className="a-detail"><span className="a-label">트리거</span>{item.트리거}</div>}
-                {item.테마섹터 && <div className="a-detail"><span className="a-label">테마</span>{item.테마섹터}</div>}
-                {item.이유     && <div className="a-reason">{item.이유}</div>}
+          {(items || []).map((item, i) => (
+            <div className="a-item" key={i}>
+              <div className="a-head">
+                <span className="a-name">{item.종목명}</span>
+                {item.changeRate != null && (
+                  <span className={`a-rate ${rc(item.changeRate)}`}>
+                    {item.changeRate >= 0 ? '+' : ''}{item.changeRate.toFixed(2)}%
+                  </span>
+                )}
               </div>
-            );
-          })}
+              {item.news && item.news.length > 0 ? (
+                item.news.map((n, j) => (
+                  <div className="a-news-item" key={j}>
+                    <span className="a-label">뉴스{j + 1}</span>
+                    <div className="a-news-title">{n.title}</div>
+                    {n.description && <div className="a-news-desc">{n.description}</div>}
+                  </div>
+                ))
+              ) : (
+                <div className="a-detail" style={{ color: 'var(--c-muted)' }}>관련 뉴스 없음</div>
+              )}
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -45,14 +51,14 @@ function AnalysisResult({ result, vol, rate }) {
 
   if (!result) return (
     <div className="card" style={{ padding: 32, textAlign: 'center', color: 'var(--c-muted)', fontSize: 14 }}>
-      분석 결과를 파싱할 수 없습니다.
+      뉴스 데이터를 불러올 수 없습니다.
     </div>
   );
 
   return (
     <div className="analysis-grid">
-      <Col title="거래대금 상위 30위" items={result['거래대금']} dataArr={vol} />
-      <Col title="등락률 상위 30위"   items={result['등락률']}   dataArr={rate} />
+      <Col title="거래대금 상위 30위" items={result['거래대금']} />
+      <Col title="등락률 상위 30위"   items={result['등락률']} />
     </div>
   );
 }

@@ -222,9 +222,12 @@ input  { font-family: inherit; outline: none; }
 }
 .a-rate { font-size: 12px; font-weight: 700; margin-left: auto; font-variant-numeric: tabular-nums; }
 .a-reason  { font-size: 13px; color: var(--c-body); line-height: 1.6; }
-.a-summary { font-size: 13px; font-weight: 600; color: var(--c-heading); margin: 4px 0 2px; line-height: 1.5; }
-.a-detail  { font-size: 12px; color: var(--c-body); margin: 2px 0; line-height: 1.5; }
-.a-label   { font-weight: 600; color: var(--c-muted); margin-right: 5px; }
+.a-summary    { font-size: 13px; font-weight: 600; color: var(--c-heading); margin: 4px 0 2px; line-height: 1.5; }
+.a-detail     { font-size: 12px; color: var(--c-body); margin: 2px 0; line-height: 1.5; }
+.a-label      { font-weight: 600; color: var(--c-muted); margin-right: 5px; }
+.a-news-item  { margin: 6px 0 0; }
+.a-news-title { font-size: 13px; color: var(--c-body); line-height: 1.5; display: inline; }
+.a-news-desc  { font-size: 11px; color: var(--c-muted); margin-top: 2px; line-height: 1.4; }
 
 /* ── Tables ───────────────────────────────────────────────── */
 .tables-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
