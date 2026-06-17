@@ -307,7 +307,17 @@ tbody td:nth-child(2) { text-align: left; font-weight: 600; }
 }
 .cal-nav:hover { background: var(--c-surface); color: var(--c-heading); }
 .cal-nav svg { width: 16px; height: 16px; }
-.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.cal-grid { display: grid; grid-template-columns: 32px repeat(7, 1fr); gap: 2px; }
+.cal-week-col { display: flex; align-items: center; justify-content: center; padding: 2px 0; }
+.cal-week-label {
+  font-size: 9px; font-weight: 700; color: var(--c-muted);
+  padding: 2px 3px; border-radius: 3px; line-height: 1;
+}
+.cal-week-label.has-weekly { color: var(--c-success); position: relative; }
+.cal-week-label.has-weekly::after {
+  content: ''; display: block; width: 4px; height: 4px;
+  border-radius: 50%; background: var(--c-success); margin: 2px auto 0;
+}
 .cal-dow {
   text-align: center; font-size: 11px; font-weight: 700;
   color: var(--c-muted); padding: 4px 0 8px;

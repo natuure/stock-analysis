@@ -182,6 +182,32 @@ export function normRate(rows) {
   }).filter(r => r && r.name);
 }
 
+export function getISOWeek(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+}
+
+export function weekKeyFromDate(date) {
+  return `${date.getFullYear()}-W${getISOWeek(date)}`;
+}
+
+export function saveWeeklyToStorage(weekKey, rows) {
+  lsSet(`weekly_${weekKey}`, JSON.stringify({ rows, weekKey }));
+  const dates = JSON.parse(ls('weekly_dates') || '[]');
+  if (!dates.includes(weekKey)) {
+    dates.unshift(weekKey);
+    lsSet('weekly_dates', JSON.stringify(dates));
+  }
+}
+
+export function loadWeeklyFromStorage(weekKey) {
+  const raw = ls(`weekly_${weekKey}`);
+  return raw ? JSON.parse(raw) : null;
+}
+
 export function saveAnalysisToStorage(dateISO, data) {
   lsSet(`analysis_${dateISO}`, JSON.stringify(data));
   const dates = JSON.parse(ls('analysis_dates') || '[]');

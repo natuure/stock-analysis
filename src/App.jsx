@@ -11,6 +11,7 @@ import {
   fileDate, fileDateFromName, dateToISO,
   lsSet,
   saveAnalysisToStorage, loadAnalysisFromStorage,
+  saveWeeklyToStorage, loadWeeklyFromStorage, weekKeyFromDate,
 } from './utils';
 import { fetchSectors } from './api';
 
@@ -86,6 +87,19 @@ export default function App() {
     }
   }
 
+  async function handleWeeklyFile(file) {
+    try {
+      const rows = await parseAnalysisExcel(file);
+      const d = new Date(file.lastModified);
+      const weekKey = weekKeyFromDate(d);
+      saveWeeklyToStorage(weekKey, rows);
+      showToast(`주간 요약 저장 완료 (${weekKey})`);
+    } catch (e) {
+      showToast('주간 파일 오류: ' + e.message);
+      throw e;
+    }
+  }
+
   async function handleAnalysisFile(file) {
     try {
       const rows = await parseAnalysisExcel(file);
@@ -152,6 +166,10 @@ export default function App() {
         onMove={calMove}
         onDayClick={loadAnalysis}
         onNoDataClick={scrollToUpload}
+        onWeekClick={(weekKey) => {
+          const data = loadWeeklyFromStorage(weekKey);
+          if (data) setAnalysisExcel(data.rows);
+        }}
       />
       {showMain && (
         <main>
@@ -168,7 +186,7 @@ export default function App() {
         </main>
       )}
 
-      <Upload onDataFile={handleDataFile} onAnalysisFile={handleAnalysisFile} />
+      <Upload onDataFile={handleDataFile} onAnalysisFile={handleAnalysisFile} onWeeklyFile={handleWeeklyFile} />
       <Toast message={toast} />
     </div>
   );
