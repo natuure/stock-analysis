@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import Header from './components/Header';
 import Calendar from './components/Calendar';
 import Upload from './components/Upload';
@@ -31,6 +31,7 @@ export default function App() {
   const [tab,   setTab]   = useState('v');
 
   const [aiAnalysis,      setAiAnalysis]      = useState(null);
+  const [serverDates,     setServerDates]     = useState([]);
   const [toast,           setToast]           = useState('');
   const [fetchingSectors, setFetchingSectors] = useState(false);
 
@@ -38,6 +39,13 @@ export default function App() {
   const rateRef         = useRef(null);
   const dateRef         = useRef(null);
   const analysisExcelRef = useRef(null);
+
+  useEffect(() => {
+    fetch('/api/getData')
+      .then(r => r.json())
+      .then(({ dates }) => { if (dates) setServerDates(dates); })
+      .catch(() => {});
+  }, []);
 
   const showToast = useCallback((msg) => {
     setToast(msg);
@@ -130,21 +138,42 @@ export default function App() {
 
   function loadAnalysis(dateISO) {
     const data = loadAnalysisFromStorage(dateISO);
-    if (!data) return;
-    const mergedVol  = data.vol.map(s => ({ ...s, sector: (data.sectors || {})[s.code] || '' }));
-    const mergedRate = data.rate.map(s => ({ ...s, sector: (data.sectors || {})[s.code] || '' }));
-    volRef.current          = mergedVol;
-    rateRef.current         = mergedRate;
-    dateRef.current         = data.date;
-    analysisExcelRef.current = data.analysisExcel || null;
-    setVol(mergedVol);
-    setRate(mergedRate);
-    setSectors(data.sectors || {});
-    setDate(data.date);
-    setAnalysisExcel(data.analysisExcel || null);
-    setAiAnalysis(null);
-    setCalSelected(dateISO);
-    fetchAiAnalysis(dateISO);
+    if (data) {
+      const mergedVol  = data.vol.map(s => ({ ...s, sector: (data.sectors || {})[s.code] || '' }));
+      const mergedRate = data.rate.map(s => ({ ...s, sector: (data.sectors || {})[s.code] || '' }));
+      volRef.current           = mergedVol;
+      rateRef.current          = mergedRate;
+      dateRef.current          = data.date;
+      analysisExcelRef.current = data.analysisExcel || null;
+      setVol(mergedVol);
+      setRate(mergedRate);
+      setSectors(data.sectors || {});
+      setDate(data.date);
+      setAnalysisExcel(data.analysisExcel || null);
+      setAiAnalysis(null);
+      setCalSelected(dateISO);
+      fetchAiAnalysis(dateISO);
+      return;
+    }
+    // localStorage에 없으면 MongoDB에서 로드
+    fetch(`/api/getData?date=${dateISO}`)
+      .then(r => r.json())
+      .then(({ vol, rate, date }) => {
+        if (!vol) return;
+        volRef.current  = vol;
+        rateRef.current = rate;
+        dateRef.current = date;
+        analysisExcelRef.current = null;
+        setVol(vol);
+        setRate(rate);
+        setDate(date);
+        setAnalysisExcel(null);
+        setAiAnalysis(null);
+        setCalSelected(dateISO);
+        triggerSectorFetch(vol, rate, date);
+        fetchAiAnalysis(dateISO);
+      })
+      .catch(() => {});
   }
 
   function handleSort(key, col) {
@@ -179,6 +208,7 @@ export default function App() {
         onMove={calMove}
         onDayClick={loadAnalysis}
         onNoDataClick={scrollToUpload}
+        serverDates={serverDates}
         onWeekClick={(weekKey) => {
           const data = loadWeeklyFromStorage(weekKey);
           if (data) setAnalysisExcel(data.rows);

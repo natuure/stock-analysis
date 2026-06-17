@@ -1,8 +1,10 @@
 """
-엑셀 파싱 + Naver 뉴스 수집 스크립트
+엑셀 파싱 + Naver 뉴스 수집 + MongoDB 저장 스크립트
 사용법: python 뉴스분석.py [파일명.xlsx]
        파일명 생략 시 현재 폴더의 최신 xlsx 파일을 자동 탐색
-결과: 뉴스데이터_YYYYMMDD.json 저장 (Claude Code가 읽어 분석)
+결과:
+  - 뉴스데이터_YYYYMMDD.json 저장 (Claude Code가 읽어 분석)
+  - MongoDB stock_data 컬렉션에 거래대금/등락률 데이터 저장
 """
 
 import os
@@ -15,13 +17,16 @@ import requests
 import pandas as pd
 from datetime import datetime
 from dotenv import load_dotenv
+from pymongo import MongoClient
 
 load_dotenv('.env.local')
 
 NAVER_ID     = os.getenv('NAVER_CLIENT_ID')
 NAVER_SECRET = os.getenv('NAVER_CLIENT_SECRET')
+MONGODB_URI  = os.getenv('MONGODB_URI')
 
 SPAM_KEYWORDS = ['무료 리딩방', '카톡방', '클릭 시 이동', '급등주 추천', 'vip 회원', '선착순 모집']
+DAYS_KO = ['월', '화', '수', '목', '금', '토', '일']
 
 
 # ── 유틸 ────────────────────────────────────────────────────────────────────
@@ -47,6 +52,20 @@ def to_change(change_val, change_rate):
         try: return float(raw)
         except: return 0.0
     return -to_num(change_val) if change_rate < 0 else to_num(change_val)
+
+def to_prev_rank(v):
+    s = str(v or '').strip()
+    if not s or s in ('-', '신규', 'NEW', 'N/A', '0', 'nan'):
+        return None
+    try:
+        n = int(float(s))
+        return n if n > 0 else None
+    except:
+        return None
+
+def format_date_korean(date_str):
+    d = datetime.strptime(date_str, '%Y-%m-%d')
+    return f'{d.year}년 {d.month}월 {d.day}일 ({DAYS_KO[d.weekday()]})'
 
 
 # ── 파일 탐색 ────────────────────────────────────────────────────────────────
@@ -93,13 +112,16 @@ def norm_vol(df, top=30):
         cr = to_rate(r.get('등락률', ''))
         result.append({
             'rank': rank,
+            'prevRank': to_prev_rank(r.get('전일', '')),
             'code': to_code(r.get('종목코드', '')),
             'name': name,
             'price': to_num(r.get('현재가', '')),
             'change': to_change(r.get('대비', ''), cr),
             'changeRate': cr,
             'volume': to_num(r.get('거래량', '')),
+            'marketCap': to_num(r.get('시가총액', '')),
             'tradingVolume': to_num(r.get('거래대금', '')),
+            'sector': '',
         })
     result.sort(key=lambda x: x['rank'])
     return result[:top]
@@ -114,14 +136,18 @@ def norm_rate(df, top=30):
         if not rank or not name or name in ('nan', ''):
             continue
         cr = to_rate(r.get('등락률', ''))
+        daeby = str(r.get('대비', ''))
         result.append({
             'rank': rank,
             'code': to_code(r.get('종목코드', '')),
             'name': name,
             'price': to_num(r.get('현재가', '')),
-            'change': to_change(r.get('대비', ''), cr),
+            'change': to_change(daeby, cr),
             'changeRate': cr,
+            'isUpperLimit': '↑' in daeby,
             'volume': to_num(r.get('거래량', '')),
+            'contractStrength': to_num(r.get('체결강도', '')),
+            'sector': '',
         })
     result.sort(key=lambda x: x['rank'])
     return result[:top]
@@ -157,6 +183,26 @@ def fetch_news(name):
         return []
 
 
+# ── MongoDB 저장 ──────────────────────────────────────────────────────────────
+
+def save_to_mongodb(date, date_korean, vol, rate):
+    if not MONGODB_URI:
+        print('[경고] MONGODB_URI 없음 — MongoDB 저장 건너뜀')
+        return
+    try:
+        client = MongoClient(MONGODB_URI)
+        col = client.get_default_database()['stock_data']
+        col.update_one(
+            {'_id': date},
+            {'$set': {'vol': vol, 'rate': rate, 'date': date_korean}},
+            upsert=True,
+        )
+        client.close()
+        print(f'MongoDB 저장 완료: stock_data/{date}')
+    except Exception as e:
+        print(f'[오류] MongoDB 저장 실패: {e}')
+
+
 # ── 메인 ─────────────────────────────────────────────────────────────────────
 
 def main():
@@ -164,15 +210,20 @@ def main():
     print(f'파일: {path}')
 
     date = extract_date(path)
-    print(f'날짜: {date}')
+    date_korean = format_date_korean(date)
+    print(f'날짜: {date_korean}')
 
     xl = pd.ExcelFile(path)
     vol  = norm_vol(parse_sheet(xl, '거래대금'))
     rate = norm_rate(parse_sheet(xl, '등락'))
     print(f'거래대금 {len(vol)}개, 등락률 {len(rate)}개 종목 파싱 완료')
 
+    # MongoDB에 종목 데이터 저장 (웹앱 자동 로드용)
+    save_to_mongodb(date, date_korean, vol, rate)
+
+    # Naver 뉴스 수집
     names = list(dict.fromkeys([s['name'] for s in vol + rate]))
-    print(f'뉴스 검색 시작 ({len(names)}개 종목)...')
+    print(f'\n뉴스 검색 시작 ({len(names)}개 종목)...')
 
     news_map = {}
     for i, name in enumerate(names, 1):

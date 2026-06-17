@@ -11,10 +11,10 @@ function getISOWeek(date) {
   return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
 }
 
-export default function Calendar({ year, month, selected, onMove, onDayClick, onNoDataClick, onWeekClick }) {
+export default function Calendar({ year, month, selected, onMove, onDayClick, onNoDataClick, onWeekClick, serverDates = [] }) {
   const dates       = JSON.parse(ls('analysis_dates') || '[]');
   const weeklyDates = JSON.parse(ls('weekly_dates')   || '[]');
-  const dateSet     = new Set(dates);
+  const dateSet     = new Set([...dates, ...serverDates]);
   const weeklySet   = new Set(weeklyDates);
 
   const today = new Date();

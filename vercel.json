@@ -7,6 +7,7 @@
   "functions": {
     "api/getSectors.js":    { "maxDuration": 60 },
     "api/analyzeStocks.js": { "maxDuration": 60 },
-    "api/getAnalysis.js":   { "maxDuration": 10 }
+    "api/getAnalysis.js":   { "maxDuration": 10 },
+    "api/getData.js":       { "maxDuration": 10 }
   }
 }
