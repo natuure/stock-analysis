@@ -2,6 +2,8 @@
   "version": 2,
   "cleanUrls": true,
   "trailingSlash": false,
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
   "functions": {
     "api/getSectors.js":    { "maxDuration": 60 },
     "api/analyzeStocks.js": { "maxDuration": 60 }
