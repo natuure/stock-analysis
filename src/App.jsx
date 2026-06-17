@@ -173,7 +173,7 @@ export default function App() {
       />
       {showMain && (
         <main>
-          <Cards vol={vol} rate={rate} fetchingSectors={fetchingSectors} />
+          <Cards vol={vol} rate={rate} />
           <Analysis analysisExcel={analysisExcel} />
           <h2 className="sec-title" style={{ marginTop: 36 }}>종목 데이터</h2>
           <Tables

@@ -88,11 +88,11 @@ function CardD({ rate }) {
   );
 }
 
-export default function Cards({ vol, rate, fetchingSectors }) {
+export default function Cards({ vol, rate }) {
   return (
     <>
       <h2 className="sec-title">거래대금 분석 <span className="sec-sub">상위 50위</span></h2>
-      <div className="grid-3">
+      <div className="grid-2">
         <div className="card">
           <div className="card-title">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -101,16 +101,6 @@ export default function Cards({ vol, rate, fetchingSectors }) {
             거래대금 / 시가총액 TOP 5
           </div>
           <CardA vol={vol} />
-        </div>
-        <div className="card">
-          <div className="card-title">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-              <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
-            </svg>
-            WICS 업종 분포 TOP 5
-          </div>
-          <SectorBars data={vol} loading={fetchingSectors} />
         </div>
         <div className="card">
           <div className="card-title">
@@ -133,16 +123,6 @@ export default function Cards({ vol, rate, fetchingSectors }) {
             상한가 종목
           </div>
           <CardD rate={rate} />
-        </div>
-        <div className="card">
-          <div className="card-title">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-              <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
-            </svg>
-            WICS 업종 분포 TOP 5
-          </div>
-          <SectorBars data={rate} loading={fetchingSectors} />
         </div>
       </div>
     </>
