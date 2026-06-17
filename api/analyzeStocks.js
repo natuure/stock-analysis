@@ -83,7 +83,7 @@ function callClaude(apiKey, prompt) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({
       model: 'claude-sonnet-4-6',
-      max_tokens: 16000,
+      max_tokens: 8192,
       messages: [{ role: 'user', content: prompt }],
     });
 

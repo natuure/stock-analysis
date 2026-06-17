@@ -22,7 +22,11 @@ export async function callAnalysis(volumeStocks, rateStocks, date) {
       date,
     }),
   });
-  const data = await res.json();
+  const text = await res.text();
+  let data;
+  try { data = JSON.parse(text); } catch {
+    throw new Error(res.status === 504 ? '분석 시간 초과 (60초). 잠시 후 다시 시도해주세요.' : `서버 오류: ${text.slice(0, 80)}`);
+  }
   if (!res.ok) throw new Error(data.error || '분석 실패');
   return data.analysis;
 }
