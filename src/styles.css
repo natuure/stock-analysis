@@ -234,7 +234,7 @@ input  { font-family: inherit; outline: none; }
 .tbl-card { background: var(--c-bg); border-radius: var(--r-md); box-shadow: var(--shadow-card); overflow: hidden; }
 .tbl-head { padding: 14px 18px; border-bottom: 1px solid var(--c-border); }
 .tbl-head-title { font-size: 14px; font-weight: 700; color: var(--c-heading); }
-.tbl-wrap { overflow-x: auto; overflow-y: auto; max-height: 1040px; -webkit-overflow-scrolling: touch; }
+.tbl-wrap { overflow-x: auto; overflow-y: auto; max-height: 790px; -webkit-overflow-scrolling: touch; }
 
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 thead th {
