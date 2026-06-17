@@ -28,7 +28,6 @@ function AnalysisResult({ result, vol, rate }) {
               <div className="a-item" key={i}>
                 <div className="a-head">
                   <span className="a-name">{item.종목명}</span>
-                  {s?.sector && <span className="a-sector">{s.sector}</span>}
                   {rateStr && <span className={`a-rate ${rc(s?.changeRate)}`}>{rateStr}</span>}
                 </div>
                 {item.한줄요약 && <div className="a-summary">{item.한줄요약}</div>}
