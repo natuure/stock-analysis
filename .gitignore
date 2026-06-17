@@ -2,3 +2,10 @@
 node_modules/
 .vercel/
 dist/
+
+# 데이터 파일
+데일리분석/
+*.xlsx
+*.xls
+뉴스데이터_*.json
+분석결과_*.json
