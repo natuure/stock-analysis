@@ -1,17 +1,13 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import Header from './components/Header';
 import Calendar from './components/Calendar';
-import Upload from './components/Upload';
 import Cards from './components/Cards';
 import Analysis from './components/Analysis';
 import Tables from './components/Tables';
-import Toast from './components/Toast';
 import {
-  parseCombinedExcel, parseAnalysisExcel, normVol, normRate,
-  fileDate, fileDateFromName, dateToISO,
-  lsSet,
+  dateToISO,
   saveAnalysisToStorage, loadAnalysisFromStorage,
-  saveWeeklyToStorage, loadWeeklyFromStorage, weekKeyFromDate,
+  loadWeeklyFromStorage,
 } from './utils';
 import { fetchSectors } from './api';
 
@@ -30,15 +26,12 @@ export default function App() {
   const [sortR, setSortR] = useState({ col: 'rank', dir: 'asc' });
   const [tab,   setTab]   = useState('v');
 
-  const [aiAnalysis,      setAiAnalysis]      = useState(null);
-  const [serverDates,     setServerDates]     = useState([]);
-  const [toast,           setToast]           = useState('');
-  const [fetchingSectors, setFetchingSectors] = useState(false);
+  const [aiAnalysis,  setAiAnalysis]  = useState(null);
+  const [serverDates, setServerDates] = useState([]);
 
-  const volRef          = useRef(null);
-  const rateRef         = useRef(null);
-  const dateRef         = useRef(null);
-  const analysisExcelRef = useRef(null);
+  const volRef  = useRef(null);
+  const rateRef = useRef(null);
+  const dateRef = useRef(null);
 
   useEffect(() => {
     fetch('/api/getData')
@@ -47,14 +40,8 @@ export default function App() {
       .catch(() => {});
   }, []);
 
-  const showToast = useCallback((msg) => {
-    setToast(msg);
-    setTimeout(() => setToast(''), 3200);
-  }, []);
-
   async function triggerSectorFetch(currentVol, currentRate, currentDate) {
     const codes = [...new Set([...currentVol.map(s => s.code), ...currentRate.map(s => s.code)])];
-    setFetchingSectors(true);
     try {
       const newSectors = await fetchSectors(codes, dateToISO(currentDate));
       const mergedVol  = currentVol.map(s => ({ ...s, sector: newSectors[s.code] || '' }));
@@ -66,64 +53,12 @@ export default function App() {
       rateRef.current = mergedRate;
       const iso = dateToISO(currentDate);
       saveAnalysisToStorage(iso, {
-        vol: mergedVol, rate: mergedRate, sectors: newSectors,
-        date: currentDate, analysisExcel: analysisExcelRef.current,
+        vol: mergedVol, rate: mergedRate, sectors: newSectors, date: currentDate,
       });
       setCalSelected(iso);
       fetchAiAnalysis(iso);
     } catch (e) {
       console.warn('업종 로딩 실패:', e.message);
-    } finally {
-      setFetchingSectors(false);
-    }
-  }
-
-  async function handleDataFile(file) {
-    try {
-      const { volRows, rateRows } = await parseCombinedExcel(file);
-      const newVol  = normVol(volRows);
-      const newRate = normRate(rateRows);
-      const newDate = fileDateFromName(file.name) || dateRef.current || fileDate(file.lastModified);
-      volRef.current  = newVol;
-      rateRef.current = newRate;
-      dateRef.current = newDate;
-      setVol(newVol);
-      setRate(newRate);
-      setDate(newDate);
-      triggerSectorFetch(newVol, newRate, newDate);
-    } catch (e) {
-      showToast('데이터 파일 오류: ' + e.message);
-      throw e;
-    }
-  }
-
-  async function handleWeeklyFile(file) {
-    try {
-      const rows = await parseAnalysisExcel(file);
-      const d = new Date(file.lastModified);
-      const weekKey = weekKeyFromDate(d);
-      saveWeeklyToStorage(weekKey, rows);
-      showToast(`주간 요약 저장 완료 (${weekKey})`);
-    } catch (e) {
-      showToast('주간 파일 오류: ' + e.message);
-      throw e;
-    }
-  }
-
-  async function handleAnalysisFile(file) {
-    try {
-      const rows = await parseAnalysisExcel(file);
-      analysisExcelRef.current = rows;
-      setAnalysisExcel(rows);
-      // 현재 날짜 저장본에 분석 파일도 포함
-      if (dateRef.current) {
-        const iso = dateToISO(dateRef.current);
-        const saved = loadAnalysisFromStorage(iso);
-        if (saved) lsSet(`analysis_${iso}`, JSON.stringify({ ...saved, analysisExcel: rows }));
-      }
-    } catch (e) {
-      showToast('분석 파일 오류: ' + e.message);
-      throw e;
     }
   }
 
@@ -141,10 +76,9 @@ export default function App() {
     if (data) {
       const mergedVol  = data.vol.map(s => ({ ...s, sector: (data.sectors || {})[s.code] || '' }));
       const mergedRate = data.rate.map(s => ({ ...s, sector: (data.sectors || {})[s.code] || '' }));
-      volRef.current           = mergedVol;
-      rateRef.current          = mergedRate;
-      dateRef.current          = data.date;
-      analysisExcelRef.current = data.analysisExcel || null;
+      volRef.current  = mergedVol;
+      rateRef.current = mergedRate;
+      dateRef.current = data.date;
       setVol(mergedVol);
       setRate(mergedRate);
       setSectors(data.sectors || {});
@@ -163,7 +97,6 @@ export default function App() {
         volRef.current  = vol;
         rateRef.current = rate;
         dateRef.current = date;
-        analysisExcelRef.current = null;
         setVol(vol);
         setRate(rate);
         setDate(date);
@@ -177,7 +110,7 @@ export default function App() {
   }
 
   function handleSort(key, col) {
-    const st   = key === 'v' ? sortV : sortR;
+    const st    = key === 'v' ? sortV : sortR;
     const setSt = key === 'v' ? setSortV : setSortR;
     setSt({
       col,
@@ -194,10 +127,6 @@ export default function App() {
     });
   }
 
-  function scrollToUpload() {
-    document.querySelector('.upload-section')?.scrollIntoView({ behavior: 'smooth' });
-  }
-
   const showMain = !!(vol && rate);
 
   return (
@@ -207,7 +136,6 @@ export default function App() {
         year={calYear} month={calMonth} selected={calSelected}
         onMove={calMove}
         onDayClick={loadAnalysis}
-        onNoDataClick={scrollToUpload}
         serverDates={serverDates}
         onWeekClick={(weekKey) => {
           const data = loadWeeklyFromStorage(weekKey);
@@ -228,9 +156,6 @@ export default function App() {
           />
         </main>
       )}
-
-      <Upload onDataFile={handleDataFile} onAnalysisFile={handleAnalysisFile} onWeeklyFile={handleWeeklyFile} />
-      <Toast message={toast} />
     </div>
   );
 }

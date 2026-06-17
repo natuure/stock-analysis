@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(\\(Get-ChildItem \"g:\\\\내 드라이브\\\\Claude\\\\주식\\\\거래대금, 등락률 분석\\\\node_modules\" -Directory | Measure-Object\\).Count)"
+    ]
+  }
+}
