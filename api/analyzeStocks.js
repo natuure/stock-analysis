@@ -1,11 +1,50 @@
 const https = require('https');
 
-function buildPrompt(date, vol, rate) {
-  const fmt = list => list.slice(0, 30).map((s, i) =>
-    `${i + 1}. ${s.name} | 등락률: ${s.changeRate >= 0 ? '+' : ''}${s.changeRate}%`
-  ).join('\n');
+function stripHtml(str) {
+  return String(str || '').replace(/<[^>]+>/g, '').replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&#\d+;/g, '').trim();
+}
 
-  return `오늘은 ${date || '알 수 없는 날짜'}입니다. 아래는 한국 주식시장 오늘 데이터입니다.
+function fetchNaverNews(stockName) {
+  return new Promise((resolve) => {
+    const clientId = process.env.NAVER_CLIENT_ID;
+    const clientSecret = process.env.NAVER_CLIENT_SECRET;
+    if (!clientId || !clientSecret) return resolve([]);
+
+    const query = encodeURIComponent(`${stockName} 주가`);
+    const options = {
+      hostname: 'openapi.naver.com',
+      path: `/v1/search/news.json?query=${query}&display=3&sort=date`,
+      method: 'GET',
+      headers: {
+        'X-Naver-Client-Id': clientId,
+        'X-Naver-Client-Secret': clientSecret,
+      },
+    };
+    const chunks = [];
+    const req = https.request(options, (res) => {
+      res.on('data', c => chunks.push(c));
+      res.on('end', () => {
+        try {
+          const data = JSON.parse(Buffer.concat(chunks).toString('utf-8'));
+          const titles = (data.items || []).map(item => stripHtml(item.title)).filter(Boolean);
+          resolve(titles);
+        } catch { resolve([]); }
+      });
+    });
+    req.on('error', () => resolve([]));
+    req.setTimeout(6000, () => { req.destroy(); resolve([]); });
+    req.end();
+  });
+}
+
+function buildPrompt(date, vol, rate, newsMap) {
+  const fmt = (list) => list.slice(0, 30).map((s, i) => {
+    const news = newsMap[s.name] || [];
+    const newsLine = news.length ? `\n   최신뉴스: ${news.map(n => `[${n}]`).join(' ')}` : '';
+    return `${i + 1}. ${s.name} | 등락률: ${s.changeRate >= 0 ? '+' : ''}${s.changeRate}%${newsLine}`;
+  }).join('\n');
+
+  return `오늘은 ${date || '알 수 없는 날짜'}입니다. 아래는 한국 주식시장 데이터와 종목별 최신 뉴스입니다.
 
 [거래대금 상위 30위]
 ${fmt(vol)}
@@ -13,13 +52,15 @@ ${fmt(vol)}
 [등락률 상위 30위]
 ${fmt(rate)}
 
-각 종목이 오늘 급등하거나 거래가 집중된 이유를 다음 관점에서 분석하세요.
+위 뉴스를 근거로 각 종목이 오늘 급등하거나 거래가 집중된 이유를 분석하세요.
+다음 관점 중 해당하는 것을 명시하세요:
 - 실적/공시 이슈
 - 수주·계약·파트너십 뉴스
 - 정책·규제 수혜
 - 업종 동반 상승 (대장주 연동)
 - AI·반도체·배터리·방산·로봇 등 테마 모멘텀
 
+뉴스가 없는 종목은 등락률과 시장 흐름으로 추정하세요.
 종목당 1~2줄로 간결하게 작성하세요.
 
 반드시 아래 JSON 형식만 응답 (설명 텍스트 없이):
@@ -69,7 +110,7 @@ function callClaude(apiKey, prompt) {
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).end();
 
@@ -79,7 +120,15 @@ module.exports = async (req, res) => {
   }
 
   const { volumeStocks = [], rateStocks = [], date } = req.body || {};
-  const prompt = buildPrompt(date, volumeStocks, rateStocks);
+
+  // 중복 제거 후 종목별 뉴스 병렬 조회
+  const uniqueNames = [...new Set([...volumeStocks, ...rateStocks].map(s => s.name))];
+  const newsEntries = await Promise.all(
+    uniqueNames.map(name => fetchNaverNews(name).then(news => [name, news]))
+  );
+  const newsMap = Object.fromEntries(newsEntries);
+
+  const prompt = buildPrompt(date, volumeStocks, rateStocks, newsMap);
 
   try {
     const text = await callClaude(apiKey, prompt);
