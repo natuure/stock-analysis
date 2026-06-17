@@ -84,8 +84,7 @@ export function parseExcel(file, sheetName) {
         let ws = wb.Sheets[sheetName];
         if (!ws) {
           const found = wb.SheetNames.find(n => n.includes(sheetName.slice(0, 2)));
-          if (!found) throw new Error(`시트 '${sheetName}' 없음 (시트 목록: ${wb.SheetNames.join(', ')})`);
-          ws = wb.Sheets[found];
+          ws = wb.Sheets[found || wb.SheetNames[0]];
         }
         ok(toRows(ws));
       } catch (err) { fail(err); }
