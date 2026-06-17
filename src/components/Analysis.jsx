@@ -1,3 +1,32 @@
+function ThemeTable({ themes }) {
+  if (!themes || themes.length === 0) return null;
+  return (
+    <div>
+      <h2 className="sec-title" style={{ marginTop: 36 }}>핫한 테마</h2>
+      <div className="theme-wrap">
+        <table className="theme-table">
+          <thead>
+            <tr>
+              <th>테마</th>
+              <th>주요 종목</th>
+              <th>핵심 재료</th>
+            </tr>
+          </thead>
+          <tbody>
+            {themes.map((row, i) => (
+              <tr key={i}>
+                <td><span className="theme-tag">{row.테마}</span></td>
+                <td>{row.주요종목}</td>
+                <td className="theme-material">{row.핵심재료}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function AiCard({ item }) {
   return (
     <div className="a-item">
@@ -29,15 +58,18 @@ function AiCard({ item }) {
 }
 
 export default function Analysis({ analysisExcel, aiAnalysis }) {
-  const hasAi  = aiAnalysis && (aiAnalysis.거래대금?.length || aiAnalysis.등락률?.length);
-  const hasN   = analysisExcel && analysisExcel.length > 0;
-  if (!hasAi && !hasN) return null;
+  const hasTheme = aiAnalysis?.테마?.length > 0;
+  const hasAi    = aiAnalysis && (aiAnalysis.거래대금?.length || aiAnalysis.등락률?.length);
+  const hasN     = analysisExcel && analysisExcel.length > 0;
+  if (!hasTheme && !hasAi && !hasN) return null;
 
   const headers = hasN ? Object.keys(analysisExcel[0]) : [];
   const nameKey = headers[0];
 
   return (
     <div>
+      {hasTheme && <ThemeTable themes={aiAnalysis.테마} />}
+
       {hasAi && (
         <>
           <h2 className="sec-title" style={{ marginTop: 36 }}>AI 분석 결과</h2>
