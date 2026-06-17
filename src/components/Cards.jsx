@@ -1,34 +1,5 @@
 import { fmtN, rc } from '../utils';
 
-function Skeleton() {
-  return (
-    <div>
-      {[80, 60, 80, 60, 80].map((w, i) => (
-        <div key={i} className={`sk sk-line w${w}`} />
-      ))}
-    </div>
-  );
-}
-
-function SectorBars({ data, loading }) {
-  if (loading) return <Skeleton />;
-  if (!data.some(s => s.sector)) return <span className="empty-text">업종 데이터 로딩 중...</span>;
-  const cnt = {};
-  data.forEach(s => { const k = s.sector || '미분류'; cnt[k] = (cnt[k] || 0) + 1; });
-  const top = Object.entries(cnt).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  const max = top[0][1];
-  return (
-    <div className="sec-list">
-      {top.map(([n, c]) => (
-        <div className="sec-item" key={n}>
-          <span className="sec-name">{n}</span>
-          <div className="sec-bar"><div className="sec-fill" style={{ width: `${(c / max * 100).toFixed(0)}%` }} /></div>
-          <span className="sec-cnt">{c}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 function CardA({ vol }) {
   const top = [...vol]

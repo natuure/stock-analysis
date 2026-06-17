@@ -122,7 +122,6 @@ def norm_vol(df, top=30):
             'volume': to_num(r.get('거래량', '')),
             'marketCap': to_num(r.get('시가총액', '')),
             'tradingVolume': to_num(r.get('거래대금', '')),
-            'sector': '',
         })
     result.sort(key=lambda x: x['rank'])
     return result[:top]
@@ -148,7 +147,6 @@ def norm_rate(df, top=30):
             'isUpperLimit': '↑' in daeby,
             'volume': to_num(r.get('거래량', '')),
             'contractStrength': to_num(r.get('체결강도', '')),
-            'sector': '',
         })
     result.sort(key=lambda x: x['rank'])
     return result[:top]

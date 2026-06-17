@@ -9,12 +9,10 @@ import {
   saveAnalysisToStorage, loadAnalysisFromStorage,
   loadWeeklyFromStorage,
 } from './utils';
-import { fetchSectors } from './api';
 
 export default function App() {
   const [vol,     setVol]     = useState(null);
   const [rate,    setRate]    = useState(null);
-  const [sectors, setSectors] = useState({});
   const [date,    setDate]    = useState(null);
   const [analysisExcel, setAnalysisExcel] = useState(null);
 
@@ -40,28 +38,6 @@ export default function App() {
       .catch(() => {});
   }, []);
 
-  async function triggerSectorFetch(currentVol, currentRate, currentDate) {
-    const codes = [...new Set([...currentVol.map(s => s.code), ...currentRate.map(s => s.code)])];
-    try {
-      const newSectors = await fetchSectors(codes, dateToISO(currentDate));
-      const mergedVol  = currentVol.map(s => ({ ...s, sector: newSectors[s.code] || '' }));
-      const mergedRate = currentRate.map(s => ({ ...s, sector: newSectors[s.code] || '' }));
-      setVol(mergedVol);
-      setRate(mergedRate);
-      setSectors(newSectors);
-      volRef.current  = mergedVol;
-      rateRef.current = mergedRate;
-      const iso = dateToISO(currentDate);
-      saveAnalysisToStorage(iso, {
-        vol: mergedVol, rate: mergedRate, sectors: newSectors, date: currentDate,
-      });
-      setCalSelected(iso);
-      fetchAiAnalysis(iso);
-    } catch (e) {
-      console.warn('업종 로딩 실패:', e.message);
-    }
-  }
-
   async function fetchAiAnalysis(dateISO) {
     try {
       const r = await fetch(`/api/getAnalysis?date=${dateISO}`);
@@ -74,14 +50,11 @@ export default function App() {
   function loadAnalysis(dateISO) {
     const data = loadAnalysisFromStorage(dateISO);
     if (data) {
-      const mergedVol  = data.vol.map(s => ({ ...s, sector: (data.sectors || {})[s.code] || '' }));
-      const mergedRate = data.rate.map(s => ({ ...s, sector: (data.sectors || {})[s.code] || '' }));
-      volRef.current  = mergedVol;
-      rateRef.current = mergedRate;
+      volRef.current  = data.vol;
+      rateRef.current = data.rate;
       dateRef.current = data.date;
-      setVol(mergedVol);
-      setRate(mergedRate);
-      setSectors(data.sectors || {});
+      setVol(data.vol);
+      setRate(data.rate);
       setDate(data.date);
       setAnalysisExcel(data.analysisExcel || null);
       setAiAnalysis(null);
@@ -103,7 +76,7 @@ export default function App() {
         setAnalysisExcel(null);
         setAiAnalysis(null);
         setCalSelected(dateISO);
-        triggerSectorFetch(vol, rate, date);
+        saveAnalysisToStorage(dateISO, { vol, rate, date });
         fetchAiAnalysis(dateISO);
       })
       .catch(() => {});

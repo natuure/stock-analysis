@@ -157,7 +157,6 @@ export function normVol(rows) {
       volume: toNum(r['거래량']),
       marketCap: toNum(r['시가총액']),
       tradingVolume: toNum(r['거래대금']),
-      sector: '',
     };
   }).filter(r => r && r.name);
 }
@@ -177,7 +176,6 @@ export function normRate(rows) {
       isUpperLimit: String(r['대비'] || '').includes('↑'),
       volume: toNum(r['거래량']),
       contractStrength: toFloat(r['체결강도']),
-      sector: '',
     };
   }).filter(r => r && r.name);
 }
