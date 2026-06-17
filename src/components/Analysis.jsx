@@ -73,13 +73,11 @@ function AiPanels({ aiAnalysis }) {
       </div>
       <div className="tables-grid">
         <div className={`tbl-card${tab === 'r' ? ' mobile-hidden' : ''}`}>
-          <div className="tbl-head"><div className="tbl-head-title">거래대금 상위</div></div>
           <div className="tbl-wrap news-wrap">
             {vol.map((item, i) => <AiCard key={i} item={item} />)}
           </div>
         </div>
         <div className={`tbl-card${tab === 'v' ? ' mobile-hidden' : ''}`}>
-          <div className="tbl-head"><div className="tbl-head-title">등락률 상위</div></div>
           <div className="tbl-wrap news-wrap">
             {rate.map((item, i) => <AiCard key={i} item={item} />)}
           </div>
