@@ -1,24 +1,13 @@
 import { useState, useRef } from 'react';
 
-function UploadIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/>
-      <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
-    </svg>
-  );
-}
-
-function Dropzone({ label, hint, onFile }) {
-  const [state, setState]    = useState('');
-  const [fileName, setFileName] = useState('');
+function Dropzone({ label, onFile }) {
+  const [state, setState] = useState('');
   const inputRef = useRef(null);
 
   async function process(file) {
     setState('');
     try {
       await onFile(file);
-      setFileName(file.name);
       setState('success');
     } catch {
       setState('error');
@@ -27,7 +16,7 @@ function Dropzone({ label, hint, onFile }) {
 
   return (
     <div
-      className={`dz${state ? ` ${state}` : ''}`}
+      className={`dz dz-mini${state ? ` ${state}` : ''}`}
       onClick={() => inputRef.current?.click()}
       onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('drag-over'); }}
       onDragLeave={e => e.currentTarget.classList.remove('drag-over')}
@@ -38,23 +27,20 @@ function Dropzone({ label, hint, onFile }) {
       }}
     >
       <input
-        ref={inputRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }}
+        ref={inputRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }}
         onChange={e => { if (e.target.files[0]) process(e.target.files[0]); }}
       />
-      <div className="dz-icon"><UploadIcon /></div>
-      <div className="dz-label">{label}</div>
-      <div className="dz-hint">{hint}</div>
-      {fileName && <div className="dz-name">{fileName}</div>}
+      <span className="dz-mini-label">{label}</span>
     </div>
   );
 }
 
 export default function Upload({ onDataFile, onAnalysisFile, onWeeklyFile }) {
   return (
-    <div className="upload-section" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
-      <Dropzone label="데이터 파일"   hint="'거래대금' · '등락률' 시트 포함 .xlsx"  onFile={onDataFile} />
-      <Dropzone label="분석 파일"     hint="직접 작성한 일간 분석 .xlsx"             onFile={onAnalysisFile} />
-      <Dropzone label="주간 요약 파일" hint="주간 요약 분석 .xlsx 드래그 또는 클릭"   onFile={onWeeklyFile} />
+    <div className="upload-section upload-mini">
+      <Dropzone label="D" onFile={onDataFile} />
+      <Dropzone label="N" onFile={onAnalysisFile} />
+      <Dropzone label="W" onFile={onWeeklyFile} />
     </div>
   );
 }
