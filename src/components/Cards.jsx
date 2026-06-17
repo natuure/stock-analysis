@@ -33,7 +33,7 @@ function SectorBars({ data, loading }) {
 function CardA({ vol }) {
   const top = [...vol]
     .filter(s => s.marketCap > 0)
-    .map(s => ({ ...s, ratio: s.tradingVolume / s.marketCap * 100 }))
+    .map(s => ({ ...s, ratio: s.tradingVolume / s.marketCap }))
     .sort((a, b) => b.ratio - a.ratio)
     .slice(0, 5);
   return top.length ? (
@@ -42,7 +42,7 @@ function CardA({ vol }) {
         <div className="rank-item" key={s.code}>
           <span className={`rank-num${i < 3 ? ' top' : ''}`}>{i + 1}</span>
           <span className="rank-name">{s.name}</span>
-          <span className="rank-val" style={{ fontSize: 11 }}>{fmtN(s.tradingVolume)} / {fmtN(s.marketCap)}</span>
+          <span className="rank-val">{s.ratio.toFixed(2)}</span>
         </div>
       ))}
     </div>
