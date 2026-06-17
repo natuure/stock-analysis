@@ -97,7 +97,7 @@ input  { font-family: inherit; outline: none; }
 .upload-section { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 32px; }
 .dz {
   background: var(--c-bg); border: 2px dashed var(--c-border);
-  border-radius: var(--r-md); padding: 28px 16px; text-align: center;
+  border-radius: var(--r-md); padding: 14px 16px; text-align: center;
   cursor: pointer; transition: border-color .2s, background .2s;
   position: relative;
 }

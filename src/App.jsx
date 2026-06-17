@@ -162,8 +162,6 @@ export default function App() {
         onDayClick={loadAnalysis}
         onNoDataClick={scrollToUpload}
       />
-      <Upload onVolFile={handleVolFile} onRateFile={handleRateFile} />
-
       {showMain && (
         <main>
           <Cards vol={vol} rate={rate} fetchingSectors={fetchingSectors} />
@@ -183,6 +181,8 @@ export default function App() {
           />
         </main>
       )}
+
+      <Upload onVolFile={handleVolFile} onRateFile={handleRateFile} />
 
       <Toast message={toast} />
     </div>
