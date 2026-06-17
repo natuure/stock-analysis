@@ -34,25 +34,24 @@ function AiCard({ item }) {
     <div className="a-item">
       <div className="a-head">
         <span className="a-name">{item.종목명}</span>
+        {item.테마섹터 && <span className="a-theme">{item.테마섹터}</span>}
       </div>
       {item.한줄요약 && (
-        <div className="a-detail">
-          <span className="a-label">요약</span>{item.한줄요약}
+        <div className="a-block">
+          <div className="a-label">요약</div>
+          <div className="a-text">{item.한줄요약}</div>
         </div>
       )}
       {item.상승원인 && (
-        <div className="a-detail">
-          <span className="a-label">원인</span>{item.상승원인}
+        <div className="a-block">
+          <div className="a-label">원인</div>
+          <div className="a-text">{item.상승원인}</div>
         </div>
       )}
       {item.트리거 && (
-        <div className="a-detail">
-          <span className="a-label">트리거</span>{item.트리거}
-        </div>
-      )}
-      {item.테마섹터 && (
-        <div className="a-detail">
-          <span className="a-label">테마</span>{item.테마섹터}
+        <div className="a-block">
+          <div className="a-label">트리거</div>
+          <div className="a-text">{item.트리거}</div>
         </div>
       )}
     </div>
