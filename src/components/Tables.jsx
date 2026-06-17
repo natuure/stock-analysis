@@ -27,7 +27,6 @@ function VolTable({ vol, sort, onSort }) {
           </th>
           {th('name', '종목명')}
           {th('price', '현재가')}
-          {th('change', '대비')}
           {th('changeRate', '등락률')}
           {th('volume', '거래량')}
           {th('tradingVolume', '거래대금')}
@@ -39,7 +38,6 @@ function VolTable({ vol, sort, onSort }) {
             <td>{s.rank}</td>
             <td>{s.name}<span className="td-code">{s.code}</span></td>
             <td>{fmtN(s.price)}</td>
-            <td className={rc(s.changeRate)}>{s.change >= 0 ? '+' : ''}{fmtN(s.change)}</td>
             <td className={rc(s.changeRate)}>{s.changeRate >= 0 ? '+' : ''}{s.changeRate.toFixed(2)}%</td>
             <td>{fmtN(s.volume)}</td>
             <td>{fmtN(s.tradingVolume)}</td>
@@ -72,7 +70,6 @@ function RateTable({ rate, sort, onSort }) {
           </th>
           {th('name', '종목명')}
           {th('price', '현재가')}
-          {th('change', '대비')}
           {th('changeRate', '등락률')}
           {th('volume', '거래량')}
           {th('contractStrength', '체결강도')}
@@ -80,11 +77,10 @@ function RateTable({ rate, sort, onSort }) {
       </thead>
       <tbody>
         {sorted.map(s => (
-          <tr key={s.code} className={s.changeRate >= 29.9 ? 'limit-up' : ''}>
+          <tr key={s.code} className={s.isUpperLimit ? 'limit-up' : ''}>
             <td>{s.rank}</td>
             <td>{s.name}<span className="td-code">{s.code}</span></td>
             <td>{fmtN(s.price)}</td>
-            <td className={rc(s.changeRate)}>{s.change >= 0 ? '+' : ''}{fmtN(s.change)}</td>
             <td className={rc(s.changeRate)}>{s.changeRate >= 0 ? '+' : ''}{s.changeRate.toFixed(2)}%</td>
             <td>{fmtN(s.volume)}</td>
             <td>{s.contractStrength.toFixed(1)}</td>
