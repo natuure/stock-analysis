@@ -75,7 +75,7 @@ function CardC({ vol }) {
 }
 
 function CardD({ rate }) {
-  const limits = rate.filter(s => s.changeRate >= 29.9);
+  const limits = rate.filter(s => s.isUpperLimit);
   return (
     <>
       <div className="limit-count">{limits.length}<span>종목</span></div>

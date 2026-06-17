@@ -126,6 +126,7 @@ export function normRate(rows) {
       price: toNum(r['현재가']),
       change: toChange(r['대비'], cr),
       changeRate: cr,
+      isUpperLimit: String(r['대비'] || '').includes('↑'),
       volume: toNum(r['거래량']),
       contractStrength: toFloat(r['체결강도']),
       sector: '',
