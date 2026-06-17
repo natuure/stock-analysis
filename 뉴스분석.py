@@ -170,56 +170,72 @@ NEWS_QUERIES = [
 
 def _call_naver(query):
     url = 'https://openapi.naver.com/v1/search/news.json'
-    params = {'query': query + ' -리딩방 -카톡방 -추천', 'display': 10, 'sort': 'date', 'start': 1}
+    params = {'query': query, 'display': 20, 'sort': 'date', 'start': 1}
     headers = {'X-Naver-Client-Id': NAVER_ID, 'X-Naver-Client-Secret': NAVER_SECRET}
     r = requests.get(url, params=params, headers=headers, timeout=6)
     return r.json().get('items', [])
 
+def _parse_articles(items, file_date, upper_limit, seen):
+    """items 리스트에서 스팸 제거·중복 제거 후 (priority, title, desc) 반환."""
+    result = []
+    for item in items:
+        try:
+            pub_date = parsedate_to_datetime(item.get('pubDate', '')).date()
+            # 상한만 적용: 3일 이상 지난 데이터는 file_date+3일 이후 기사 제외
+            if upper_limit and pub_date > upper_limit:
+                continue
+            # 파일날짜에 가까울수록 우선 (당일=0, 이전/이후는 날짜 차이만큼)
+            priority = abs((pub_date - file_date).days)
+        except Exception:
+            priority = 999
+
+        title = re.sub(r'<[^>]+>', '', item.get('title', ''))
+        desc  = re.sub(r'<[^>]+>', '', item.get('description', ''))
+        if any(kw in (title + desc).lower() for kw in SPAM_KEYWORDS):
+            continue
+        if title in seen:
+            continue
+        seen.add(title)
+        result.append((priority, title, desc))
+    return result
+
+
 def fetch_news(name, file_date_str):
     """
     file_date_str 기준으로 뉴스 검색.
-    - 기본: 파일날짜 ~ 오늘
-    - 현재가 파일날짜+3일 이상 지난 경우: 파일날짜 ~ 파일날짜+3일 (과거 데이터 재분석 시 범위 제한)
-    - 당일(파일날짜) 기사 우선 정렬
+    - 당일(파일날짜) 기사 최우선, 날짜 하한 없음 (오래된 기사도 참고)
+    - 3일 이상 지난 데이터: file_date+3일 이후 기사 제외 (오늘 뉴스 혼입 방지)
+    - 8개 쿼리 후에도 0건이면 종목명 단독 검색으로 폴백
     """
     if not NAVER_ID or not NAVER_SECRET:
         print(f'  [경고] NAVER API 키 없음 — {name} 뉴스 건너뜀')
         return []
 
-    file_date = datetime.strptime(file_date_str, '%Y-%m-%d').date()
-    today     = datetime.now().date()
+    file_date    = datetime.strptime(file_date_str, '%Y-%m-%d').date()
+    today        = datetime.now().date()
     days_elapsed = (today - file_date).days
-    end_date  = file_date + timedelta(days=3) if days_elapsed >= 3 else today
+    upper_limit  = file_date + timedelta(days=3) if days_elapsed >= 3 else None
 
     seen     = set()
-    articles = []  # (당일과의 날짜 차이, title, description)
+    articles = []
 
     for q_template in NEWS_QUERIES:
         try:
             items = _call_naver(q_template.format(name=name))
-            for item in items:
-                # 날짜 필터링
-                try:
-                    pub_date = parsedate_to_datetime(item.get('pubDate', '')).date()
-                    if pub_date < file_date or pub_date > end_date:
-                        continue
-                    priority = (pub_date - file_date).days  # 0 = 당일 (최우선)
-                except Exception:
-                    priority = 999  # 날짜 파싱 실패 시 후순위
-
-                title = re.sub(r'<[^>]+>', '', item.get('title', ''))
-                desc  = re.sub(r'<[^>]+>', '', item.get('description', ''))
-                if any(kw in (title + desc).lower() for kw in SPAM_KEYWORDS):
-                    continue
-                if title in seen:
-                    continue
-                seen.add(title)
-                articles.append((priority, title, desc))
+            articles += _parse_articles(items, file_date, upper_limit, seen)
         except Exception:
             pass
         time.sleep(0.05)
 
-    articles.sort(key=lambda x: x[0])  # 당일 기사 우선
+    # 폴백: 결과가 없으면 종목명 단독 검색
+    if not articles:
+        try:
+            items = _call_naver(name)
+            articles += _parse_articles(items, file_date, upper_limit, seen)
+        except Exception:
+            pass
+
+    articles.sort(key=lambda x: x[0])
     return [{'title': t, 'description': d} for _, t, d in articles[:10]]
 
 
