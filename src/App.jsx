@@ -7,18 +7,19 @@ import Analysis from './components/Analysis';
 import Tables from './components/Tables';
 import Toast from './components/Toast';
 import {
-  parseExcel, normVol, normRate,
+  parseCombinedExcel, parseAnalysisExcel, normVol, normRate,
   fileDate, fileDateFromName, dateToISO,
   lsSet,
   saveAnalysisToStorage, loadAnalysisFromStorage,
 } from './utils';
-import { fetchSectors, callAnalysis } from './api';
+import { fetchSectors } from './api';
 
 export default function App() {
   const [vol,     setVol]     = useState(null);
   const [rate,    setRate]    = useState(null);
   const [sectors, setSectors] = useState({});
   const [date,    setDate]    = useState(null);
+  const [analysisExcel, setAnalysisExcel] = useState(null);
 
   const [calYear,     setCalYear]     = useState(() => new Date().getFullYear());
   const [calMonth,    setCalMonth]    = useState(() => new Date().getMonth());
@@ -28,16 +29,13 @@ export default function App() {
   const [sortR, setSortR] = useState({ col: 'rank', dir: 'asc' });
   const [tab,   setTab]   = useState('v');
 
-  const [settingsOpen,   setSettingsOpen]   = useState(false);
-  const [toast,          setToast]          = useState('');
-  const [analyzeLoading, setAnalyzeLoading] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState(null);
+  const [toast,           setToast]           = useState('');
   const [fetchingSectors, setFetchingSectors] = useState(false);
 
-  // Refs to avoid stale closures in async handlers
-  const volRef  = useRef(null);
-  const rateRef = useRef(null);
-  const dateRef = useRef(null);
+  const volRef          = useRef(null);
+  const rateRef         = useRef(null);
+  const dateRef         = useRef(null);
+  const analysisExcelRef = useRef(null);
 
   const showToast = useCallback((msg) => {
     setToast(msg);
@@ -57,7 +55,10 @@ export default function App() {
       volRef.current  = mergedVol;
       rateRef.current = mergedRate;
       const iso = dateToISO(currentDate);
-      saveAnalysisToStorage(iso, { vol: mergedVol, rate: mergedRate, sectors: newSectors, date: currentDate });
+      saveAnalysisToStorage(iso, {
+        vol: mergedVol, rate: mergedRate, sectors: newSectors,
+        date: currentDate, analysisExcel: analysisExcelRef.current,
+      });
       setCalSelected(iso);
     } catch (e) {
       console.warn('업종 로딩 실패:', e.message);
@@ -66,35 +67,38 @@ export default function App() {
     }
   }
 
-  async function handleVolFile(file) {
+  async function handleDataFile(file) {
     try {
-      const rows    = await parseExcel(file, '거래대금');
-      const newVol  = normVol(rows);
+      const { volRows, rateRows } = await parseCombinedExcel(file);
+      const newVol  = normVol(volRows);
+      const newRate = normRate(rateRows);
       const newDate = fileDateFromName(file.name) || dateRef.current || fileDate(file.lastModified);
       volRef.current  = newVol;
+      rateRef.current = newRate;
       dateRef.current = newDate;
       setVol(newVol);
+      setRate(newRate);
       setDate(newDate);
-      if (rateRef.current) triggerSectorFetch(newVol, rateRef.current, newDate);
+      triggerSectorFetch(newVol, newRate, newDate);
     } catch (e) {
-      showToast('거래대금 파일 오류: ' + e.message);
+      showToast('데이터 파일 오류: ' + e.message);
       throw e;
     }
   }
 
-  async function handleRateFile(file) {
+  async function handleAnalysisFile(file) {
     try {
-      const rows    = await parseExcel(file, '등락률');
-      const newRate = normRate(rows);
-      const nameDate = fileDateFromName(file.name);
-      const newDate  = nameDate || dateRef.current || fileDate(file.lastModified);
-      rateRef.current = newRate;
-      dateRef.current = newDate;
-      setRate(newRate);
-      setDate(newDate);
-      if (volRef.current) triggerSectorFetch(volRef.current, newRate, newDate);
+      const rows = await parseAnalysisExcel(file);
+      analysisExcelRef.current = rows;
+      setAnalysisExcel(rows);
+      // 현재 날짜 저장본에 분석 파일도 포함
+      if (dateRef.current) {
+        const iso = dateToISO(dateRef.current);
+        const saved = loadAnalysisFromStorage(iso);
+        if (saved) lsSet(`analysis_${iso}`, JSON.stringify({ ...saved, analysisExcel: rows }));
+      }
     } catch (e) {
-      showToast('등락률 파일 오류: ' + e.message);
+      showToast('분석 파일 오류: ' + e.message);
       throw e;
     }
   }
@@ -104,39 +108,20 @@ export default function App() {
     if (!data) return;
     const mergedVol  = data.vol.map(s => ({ ...s, sector: (data.sectors || {})[s.code] || '' }));
     const mergedRate = data.rate.map(s => ({ ...s, sector: (data.sectors || {})[s.code] || '' }));
-    volRef.current  = mergedVol;
-    rateRef.current = mergedRate;
-    dateRef.current = data.date;
+    volRef.current          = mergedVol;
+    rateRef.current         = mergedRate;
+    dateRef.current         = data.date;
+    analysisExcelRef.current = data.analysisExcel || null;
     setVol(mergedVol);
     setRate(mergedRate);
     setSectors(data.sectors || {});
     setDate(data.date);
+    setAnalysisExcel(data.analysisExcel || null);
     setCalSelected(dateISO);
-    setAnalysisResult(data.analysisResult || null);
-  }
-
-  async function startAnalysis() {
-    setAnalyzeLoading(true);
-    setAnalysisResult(null);
-    try {
-      const text = await callAnalysis(vol, rate, dateToISO(date));
-      const m = text.match(/\{[\s\S]+\}/);
-      const result = m ? JSON.parse(m[0]) : null;
-      setAnalysisResult(result);
-      if (result) {
-        const iso = dateToISO(date);
-        const saved = loadAnalysisFromStorage(iso);
-        if (saved) lsSet(`analysis_${iso}`, JSON.stringify({ ...saved, analysisResult: result }));
-      }
-    } catch (e) {
-      showToast('오류: ' + e.message);
-    } finally {
-      setAnalyzeLoading(false);
-    }
   }
 
   function handleSort(key, col) {
-    const st  = key === 'v' ? sortV : sortR;
+    const st   = key === 'v' ? sortV : sortR;
     const setSt = key === 'v' ? setSortV : setSortR;
     setSt({
       col,
@@ -171,12 +156,7 @@ export default function App() {
       {showMain && (
         <main>
           <Cards vol={vol} rate={rate} fetchingSectors={fetchingSectors} />
-          <Analysis
-            vol={vol} rate={rate}
-            loading={analyzeLoading}
-            result={analysisResult}
-            onStart={startAnalysis}
-          />
+          <Analysis analysisExcel={analysisExcel} />
           <h2 className="sec-title" style={{ marginTop: 36 }}>종목 데이터</h2>
           <Tables
             vol={vol} rate={rate}
@@ -188,8 +168,7 @@ export default function App() {
         </main>
       )}
 
-      <Upload onVolFile={handleVolFile} onRateFile={handleRateFile} />
-
+      <Upload onDataFile={handleDataFile} onAnalysisFile={handleAnalysisFile} />
       <Toast message={toast} />
     </div>
   );

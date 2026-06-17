@@ -49,11 +49,11 @@ function Dropzone({ label, hint, onFile }) {
   );
 }
 
-export default function Upload({ onVolFile, onRateFile }) {
+export default function Upload({ onDataFile, onAnalysisFile }) {
   return (
     <div className="upload-section">
-      <Dropzone label="거래대금 파일" hint="시트명 '거래대금' · .xlsx 드래그 또는 클릭" onFile={onVolFile} />
-      <Dropzone label="등락률 파일"   hint="시트명 '등락률' · .xlsx 드래그 또는 클릭"   onFile={onRateFile} />
+      <Dropzone label="데이터 파일" hint="'거래대금' · '등락률' 시트 포함 .xlsx" onFile={onDataFile} />
+      <Dropzone label="분석 파일"   hint="직접 작성한 분석 .xlsx 드래그 또는 클릭"  onFile={onAnalysisFile} />
     </div>
   );
 }

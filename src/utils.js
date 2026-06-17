@@ -94,6 +94,54 @@ export function parseExcel(file, sheetName) {
   });
 }
 
+export function parseCombinedExcel(file) {
+  return new Promise((ok, fail) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb = XLSX.read(e.target.result, { type: 'binary' });
+        const getSheet = (name) => {
+          if (wb.Sheets[name]) return wb.Sheets[name];
+          const found = wb.SheetNames.find(n => n.includes(name.slice(0, 2)));
+          return wb.Sheets[found] || null;
+        };
+        const volSheet  = getSheet('거래대금') || wb.Sheets[wb.SheetNames[0]];
+        const rateSheet = getSheet('등락률')   || wb.Sheets[wb.SheetNames[1]];
+        if (!volSheet)  throw new Error("'거래대금' 시트를 찾을 수 없습니다.");
+        if (!rateSheet) throw new Error("'등락률' 시트를 찾을 수 없습니다.");
+        ok({ volRows: toRows(volSheet), rateRows: toRows(rateSheet) });
+      } catch (err) { fail(err); }
+    };
+    reader.onerror = () => fail(new Error('파일 읽기 실패'));
+    reader.readAsBinaryString(file);
+  });
+}
+
+export function parseAnalysisExcel(file) {
+  return new Promise((ok, fail) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb = XLSX.read(e.target.result, { type: 'binary' });
+        const ws  = wb.Sheets[wb.SheetNames[0]];
+        const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+        if (raw.length < 2) return ok([]);
+        const headers = raw[0].map(h => String(h).trim()).filter(Boolean);
+        const rows = raw.slice(1)
+          .map(row => {
+            const obj = {};
+            headers.forEach((h, i) => { obj[h] = String(row[i] ?? '').trim(); });
+            return obj;
+          })
+          .filter(row => Object.values(row).some(v => v));
+        ok(rows);
+      } catch (err) { fail(err); }
+    };
+    reader.onerror = () => fail(new Error('파일 읽기 실패'));
+    reader.readAsBinaryString(file);
+  });
+}
+
 export function normVol(rows) {
   return rows.map(r => {
     const rank = toInt(r['순위']);
