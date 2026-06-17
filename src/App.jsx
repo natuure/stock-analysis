@@ -119,8 +119,9 @@ export default function App() {
     setAnalyzeLoading(true);
     setAnalysisResult(null);
     try {
-      const result = await callAnalysis(vol, rate, dateToISO(date));
-      setAnalysisResult(result);
+      const text = await callAnalysis(vol, rate, dateToISO(date));
+      const m = text.match(/\{[\s\S]+\}/);
+      setAnalysisResult(m ? JSON.parse(m[0]) : null);
     } catch (e) {
       showToast('오류: ' + e.message);
     } finally {
