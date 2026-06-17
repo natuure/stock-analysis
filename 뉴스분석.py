@@ -15,7 +15,8 @@ import glob
 import time
 import requests
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
+from email.utils import parsedate_to_datetime
 from dotenv import load_dotenv
 from pymongo import MongoClient
 
@@ -71,9 +72,9 @@ def format_date_korean(date_str):
 # ── 파일 탐색 ────────────────────────────────────────────────────────────────
 
 def find_excel():
-    files = glob.glob('*.xlsx') + glob.glob('*.xls')
+    files = glob.glob('데일리분석/**/*.xlsx', recursive=True) + glob.glob('데일리분석/**/*.xls', recursive=True)
     if not files:
-        raise FileNotFoundError('현재 폴더에 엑셀 파일이 없습니다.')
+        raise FileNotFoundError('데일리분석 폴더에 엑셀 파일이 없습니다.')
     return max(files, key=os.path.getmtime)
 
 def extract_date(filename):
@@ -155,32 +156,71 @@ def norm_rate(df, top=30):
 
 # ── Naver 뉴스 API ───────────────────────────────────────────────────────────
 
-def fetch_news(name):
+# AI검색.md 기반 쿼리 패턴 (필수 → 선택 순)
+NEWS_QUERIES = [
+    '{name} 특징주',        # 필수 ★
+    '{name} 급등 이유',     # 필수
+    '{name} 상승 배경',     # 필수
+    '{name} 상한가 사유',   # 필수
+    '{name} 거래량 폭발',   # 선택
+    '{name} 모멘텀',        # 선택
+    '{name} 공급계약 공시', # 선택
+    '{name} 대규모 수주',   # 선택
+]
+
+def _call_naver(query):
+    url = 'https://openapi.naver.com/v1/search/news.json'
+    params = {'query': query + ' -리딩방 -카톡방 -추천', 'display': 10, 'sort': 'date', 'start': 1}
+    headers = {'X-Naver-Client-Id': NAVER_ID, 'X-Naver-Client-Secret': NAVER_SECRET}
+    r = requests.get(url, params=params, headers=headers, timeout=6)
+    return r.json().get('items', [])
+
+def fetch_news(name, file_date_str):
+    """
+    file_date_str 기준으로 뉴스 검색.
+    - 기본: 파일날짜 ~ 오늘
+    - 현재가 파일날짜+3일 이상 지난 경우: 파일날짜 ~ 파일날짜+3일 (과거 데이터 재분석 시 범위 제한)
+    - 당일(파일날짜) 기사 우선 정렬
+    """
     if not NAVER_ID or not NAVER_SECRET:
         print(f'  [경고] NAVER API 키 없음 — {name} 뉴스 건너뜀')
         return []
-    query = f'{name} 특징주 -리딩방 -카톡방 -추천'
-    url = 'https://openapi.naver.com/v1/search/news.json'
-    params = {'query': query, 'display': 10, 'sort': 'date', 'start': 1}
-    headers = {'X-Naver-Client-Id': NAVER_ID, 'X-Naver-Client-Secret': NAVER_SECRET}
-    try:
-        r = requests.get(url, params=params, headers=headers, timeout=6)
-        items = r.json().get('items', [])
-        filtered = [
-            i for i in items
-            if not any(kw in (i.get('title', '') + i.get('description', '')).lower()
-                       for kw in SPAM_KEYWORDS)
-        ]
-        return [
-            {
-                'title': re.sub(r'<[^>]+>', '', i.get('title', '')),
-                'description': re.sub(r'<[^>]+>', '', i.get('description', '')),
-            }
-            for i in filtered[:5]
-        ]
-    except Exception as e:
-        print(f'  [오류] {name} 뉴스 요청 실패: {e}')
-        return []
+
+    file_date = datetime.strptime(file_date_str, '%Y-%m-%d').date()
+    today     = datetime.now().date()
+    days_elapsed = (today - file_date).days
+    end_date  = file_date + timedelta(days=3) if days_elapsed >= 3 else today
+
+    seen     = set()
+    articles = []  # (당일과의 날짜 차이, title, description)
+
+    for q_template in NEWS_QUERIES:
+        try:
+            items = _call_naver(q_template.format(name=name))
+            for item in items:
+                # 날짜 필터링
+                try:
+                    pub_date = parsedate_to_datetime(item.get('pubDate', '')).date()
+                    if pub_date < file_date or pub_date > end_date:
+                        continue
+                    priority = (pub_date - file_date).days  # 0 = 당일 (최우선)
+                except Exception:
+                    priority = 999  # 날짜 파싱 실패 시 후순위
+
+                title = re.sub(r'<[^>]+>', '', item.get('title', ''))
+                desc  = re.sub(r'<[^>]+>', '', item.get('description', ''))
+                if any(kw in (title + desc).lower() for kw in SPAM_KEYWORDS):
+                    continue
+                if title in seen:
+                    continue
+                seen.add(title)
+                articles.append((priority, title, desc))
+        except Exception:
+            pass
+        time.sleep(0.05)
+
+    articles.sort(key=lambda x: x[0])  # 당일 기사 우선
+    return [{'title': t, 'description': d} for _, t, d in articles[:10]]
 
 
 # ── MongoDB 저장 ──────────────────────────────────────────────────────────────
@@ -228,7 +268,7 @@ def main():
     news_map = {}
     for i, name in enumerate(names, 1):
         print(f'  [{i}/{len(names)}] {name}', end=' ', flush=True)
-        news = fetch_news(name)
+        news = fetch_news(name, date)
         news_map[name] = news
         print(f'→ {len(news)}건')
         time.sleep(0.1)
