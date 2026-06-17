@@ -22,13 +22,15 @@ function fetchNaverPage(code) {
   return new Promise((resolve) => {
     const options = {
       hostname: 'finance.naver.com',
-      path: `/item/main.naver?code=${code}`,
+      path: `/item/coinfo.naver?code=${code}&target=outside`,
       method: 'GET',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml',
-        'Accept-Language': 'ko-KR,ko;q=0.9',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8',
         'Accept-Encoding': 'identity',
+        'Referer': `https://finance.naver.com/item/main.naver?code=${code}`,
+        'Connection': 'keep-alive',
       },
     };
     const chunks = [];
@@ -37,7 +39,7 @@ function fetchNaverPage(code) {
       res.on('end', () => {
         try {
           const html = iconv.decode(Buffer.concat(chunks), 'EUC-KR');
-          resolve(extractWics(html));
+          resolve(extractWics(html, code));
         } catch { resolve('파싱 오류'); }
       });
     });
@@ -47,10 +49,18 @@ function fetchNaverPage(code) {
   });
 }
 
-function extractWics(html) {
-  const idx = html.indexOf('WICS</th>');
-  if (idx === -1) return 'ETF/ETN';
-  const area = html.slice(idx, idx + 600);
+function extractWics(html, code) {
+  // ETF/ETN 판별: WICS 섹션이 없으면 ETF 페이지
+  const wicsIdx = html.indexOf('WICS');
+  if (wicsIdx === -1) {
+    // 차단 여부 확인: 한글 콘텐츠가 없으면 차단된 것
+    if (!/[가-힣]{3,}/.test(html)) {
+      console.warn(`[BLOCKED] code=${code} len=${html.length}`);
+      return '미분류';
+    }
+    return 'ETF/ETN';
+  }
+  const area = html.slice(wicsIdx, wicsIdx + 400);
   const aMatch = area.match(/<a[^>]*>([^<]+)<\/a>/);
   if (aMatch && /[가-힣]/.test(aMatch[1])) return aMatch[1].trim();
   const tdMatch = area.match(/<td[^>]*>\s*([가-힣][^<]{1,30}?)\s*</);
