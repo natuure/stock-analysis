@@ -72,7 +72,7 @@ export default function Analysis({ analysisExcel, aiAnalysis }) {
 
       {hasAi && (
         <>
-          <h2 className="sec-title" style={{ marginTop: 36 }}>AI 분석 결과</h2>
+          <h2 className="sec-title" style={{ marginTop: 36 }}>주요 뉴스</h2>
           {aiAnalysis.거래대금?.length > 0 && (
             <>
               <h3 className="sec-subtitle">거래대금 상위</h3>
