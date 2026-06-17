@@ -210,7 +210,7 @@ input  { font-family: inherit; outline: none; }
 .theme-wrap { overflow-x: auto; border-radius: var(--r-md); box-shadow: var(--shadow-card); }
 .theme-table { width: 100%; border-collapse: collapse; font-size: 13px; background: var(--c-bg); }
 .theme-table thead th {
-  padding: 10px 14px; text-align: left;
+  padding: 10px 14px; text-align: center;
   font-size: 11px; font-weight: 700; color: var(--c-muted); text-transform: uppercase;
   background: var(--c-bg); border-bottom: 2px solid var(--c-border);
   position: sticky; top: 0; z-index: 1; cursor: default; user-select: none;
@@ -218,7 +218,7 @@ input  { font-family: inherit; outline: none; }
 .theme-table tbody tr { border-bottom: 1px solid var(--c-border); transition: background .1s; }
 .theme-table tbody tr:last-child { border-bottom: none; }
 .theme-table tbody tr:hover { background: #fafbfc; }
-.theme-table tbody td { padding: 10px 14px; color: var(--c-heading); vertical-align: middle; }
+.theme-table tbody td { padding: 10px 14px; color: var(--c-heading); vertical-align: middle; text-align: center; }
 .theme-tag {
   display: inline-block; padding: 3px 9px; border-radius: 20px;
   background: var(--c-primary-light, #e8f0fe); color: var(--c-primary);
