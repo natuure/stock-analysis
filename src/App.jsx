@@ -30,6 +30,7 @@ export default function App() {
   const [sortR, setSortR] = useState({ col: 'rank', dir: 'asc' });
   const [tab,   setTab]   = useState('v');
 
+  const [aiAnalysis,      setAiAnalysis]      = useState(null);
   const [toast,           setToast]           = useState('');
   const [fetchingSectors, setFetchingSectors] = useState(false);
 
@@ -61,6 +62,7 @@ export default function App() {
         date: currentDate, analysisExcel: analysisExcelRef.current,
       });
       setCalSelected(iso);
+      fetchAiAnalysis(iso);
     } catch (e) {
       console.warn('업종 로딩 실패:', e.message);
     } finally {
@@ -117,6 +119,15 @@ export default function App() {
     }
   }
 
+  async function fetchAiAnalysis(dateISO) {
+    try {
+      const r = await fetch(`/api/getAnalysis?date=${dateISO}`);
+      if (!r.ok) return;
+      const { analysis } = await r.json();
+      if (analysis) setAiAnalysis(analysis);
+    } catch { /* 네트워크 오류 시 무시 */ }
+  }
+
   function loadAnalysis(dateISO) {
     const data = loadAnalysisFromStorage(dateISO);
     if (!data) return;
@@ -131,7 +142,9 @@ export default function App() {
     setSectors(data.sectors || {});
     setDate(data.date);
     setAnalysisExcel(data.analysisExcel || null);
+    setAiAnalysis(null);
     setCalSelected(dateISO);
+    fetchAiAnalysis(dateISO);
   }
 
   function handleSort(key, col) {
@@ -174,7 +187,7 @@ export default function App() {
       {showMain && (
         <main>
           <Cards vol={vol} rate={rate} />
-          <Analysis analysisExcel={analysisExcel} />
+          <Analysis analysisExcel={analysisExcel} aiAnalysis={aiAnalysis} />
           <h2 className="sec-title" style={{ marginTop: 36 }}>종목 데이터</h2>
           <Tables
             vol={vol} rate={rate}

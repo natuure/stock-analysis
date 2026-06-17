@@ -6,6 +6,7 @@
   "outputDirectory": "dist",
   "functions": {
     "api/getSectors.js":    { "maxDuration": 60 },
-    "api/analyzeStocks.js": { "maxDuration": 60 }
+    "api/analyzeStocks.js": { "maxDuration": 60 },
+    "api/getAnalysis.js":   { "maxDuration": 10 }
   }
 }
