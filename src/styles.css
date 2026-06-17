@@ -206,6 +206,11 @@ input  { font-family: inherit; outline: none; }
 .w80 { width: 80%; }
 .w60 { width: 60%; }
 
+/* ── 주요 뉴스 패널 ────────────────────────────────────────── */
+.news-wrap { padding: 8px 0; }
+.news-wrap .a-item { border: none; border-bottom: 1px solid var(--c-border); margin: 0; border-radius: 0; box-shadow: none; }
+.news-wrap .a-item:last-child { border-bottom: none; }
+
 /* ── 핫한 테마 테이블 ──────────────────────────────────────── */
 .theme-wrap { overflow-x: auto; border-radius: var(--r-md); box-shadow: var(--shadow-card); }
 .theme-table { width: 100%; border-collapse: collapse; font-size: 13px; background: var(--c-bg); }
