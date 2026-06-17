@@ -69,9 +69,9 @@ module.exports = async (req, res) => {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).end();
 
-  const apiKey = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey || !apiKey.startsWith('sk-')) {
-    return res.status(401).json({ error: '유효한 Claude API 키가 필요합니다.' });
+    return res.status(500).json({ error: 'ANTHROPIC_API_KEY가 서버에 설정되지 않았습니다.' });
   }
 
   const { volumeStocks = [], rateStocks = [], date } = req.body || {};

@@ -54,16 +54,15 @@ function AnalysisResult({ result, vol, rate }) {
   );
 }
 
-export default function Analysis({ vol, rate, loading, result, hasKey, onStart }) {
+export default function Analysis({ vol, rate, loading, result, onStart }) {
   return (
     <div>
       <div className="analysis-row" style={{ marginTop: 36 }}>
         <h2 className="sec-title" style={{ margin: 0 }}>AI 뉴스 분석</h2>
         <button
           className="btn-primary"
-          disabled={!vol || !rate || !hasKey || loading}
+          disabled={!vol || !rate || loading}
           onClick={onStart}
-          title={!hasKey ? 'Claude API 키를 설정 패널에서 입력해주세요' : ''}
         >
           {loading ? (
             <>

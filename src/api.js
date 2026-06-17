@@ -12,13 +12,10 @@ export async function fetchSectors(codes, dateStr) {
   return {};
 }
 
-export async function callAnalysis(volumeStocks, rateStocks, date, apiKey) {
+export async function callAnalysis(volumeStocks, rateStocks, date) {
   const res = await fetch('/api/analyzeStocks', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       volumeStocks: volumeStocks.slice(0, 30).map(s => ({ name: s.name, changeRate: s.changeRate, sector: s.sector })),
       rateStocks:   rateStocks.slice(0, 30).map(s => ({ name: s.name, changeRate: s.changeRate, sector: s.sector })),

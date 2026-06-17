@@ -1,6 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
 import Header from './components/Header';
-import SettingsPanel from './components/SettingsPanel';
 import Calendar from './components/Calendar';
 import Upload from './components/Upload';
 import Cards from './components/Cards';
@@ -10,7 +9,7 @@ import Toast from './components/Toast';
 import {
   parseExcel, normVol, normRate,
   fileDate, fileDateFromName, dateToISO,
-  ls, lsSet,
+  lsSet,
   saveAnalysisToStorage, loadAnalysisFromStorage,
 } from './utils';
 import { fetchSectors, callAnalysis } from './api';
@@ -30,7 +29,6 @@ export default function App() {
   const [tab,   setTab]   = useState('v');
 
   const [settingsOpen,   setSettingsOpen]   = useState(false);
-  const [claudeKey,      setClaudeKey]      = useState(() => ls('claude_key') || '');
   const [toast,          setToast]          = useState('');
   const [analyzeLoading, setAnalyzeLoading] = useState(false);
   const [analysisResult, setAnalysisResult] = useState(null);
@@ -118,11 +116,10 @@ export default function App() {
   }
 
   async function startAnalysis() {
-    if (!claudeKey) { showToast('Claude API 키를 설정 패널에서 입력해주세요'); return; }
     setAnalyzeLoading(true);
     setAnalysisResult(null);
     try {
-      const text = await callAnalysis(vol, rate, dateToISO(date), claudeKey);
+      const text = await callAnalysis(vol, rate, dateToISO(date));
       const m = text.match(/\{[\s\S]+\}/);
       setAnalysisResult(m ? JSON.parse(m[0]) : null);
     } catch (e) {
@@ -150,13 +147,6 @@ export default function App() {
     });
   }
 
-  function handleSaveSettings(key) {
-    lsSet('claude_key', key);
-    setClaudeKey(key);
-    setSettingsOpen(false);
-    showToast('설정이 저장되었습니다');
-  }
-
   function scrollToUpload() {
     document.querySelector('.upload-section')?.scrollIntoView({ behavior: 'smooth' });
   }
@@ -165,12 +155,7 @@ export default function App() {
 
   return (
     <div className="wrap">
-      <Header date={date} onToggleSettings={() => setSettingsOpen(o => !o)} />
-      <SettingsPanel
-        open={settingsOpen}
-        initialKey={claudeKey}
-        onSave={handleSaveSettings}
-      />
+      <Header date={date} />
       <Calendar
         year={calYear} month={calMonth} selected={calSelected}
         onMove={calMove}
@@ -186,7 +171,6 @@ export default function App() {
             vol={vol} rate={rate}
             loading={analyzeLoading}
             result={analysisResult}
-            hasKey={!!claudeKey}
             onStart={startAnalysis}
           />
           <h2 className="sec-title" style={{ marginTop: 36 }}>종목 데이터</h2>
