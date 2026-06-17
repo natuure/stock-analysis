@@ -96,11 +96,11 @@ function callClaude(apiKey, prompt) {
         'Content-Length': Buffer.byteLength(body),
       },
     }, (res) => {
-      let data = '';
-      res.on('data', c => { data += c; });
+      const chunks = [];
+      res.on('data', c => { chunks.push(c); });
       res.on('end', () => {
         try {
-          const parsed = JSON.parse(data);
+          const parsed = JSON.parse(Buffer.concat(chunks).toString('utf-8'));
           if (parsed.error) reject(new Error(parsed.error.message));
           else if (parsed.content?.[0]?.text) resolve(parsed.content[0].text);
           else reject(new Error('응답 형식 오류'));
