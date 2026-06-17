@@ -1,10 +1,12 @@
 """
 Claude Code가 생성한 분석 JSON을 MongoDB에 저장하는 스크립트
-사용법: python 저장분석.py 분석결과_YYYYMMDD.json
+사용법: python 저장분석.py 분석결과_YYYY-MM-DD.json
+       파일명 생략 시 분석결과/ 폴더의 최신 분석결과_*.json 자동 탐색
 """
 
 import os
 import sys
+import glob
 import json
 from dotenv import load_dotenv
 from pymongo import MongoClient
@@ -12,12 +14,21 @@ from pymongo import MongoClient
 load_dotenv('.env.local')
 
 
-def main():
-    if len(sys.argv) < 2:
-        print('사용법: python 저장분석.py 분석결과_YYYYMMDD.json')
-        sys.exit(1)
+def find_latest():
+    files = glob.glob(os.path.join('분석결과', '분석결과_*.json'))
+    if not files:
+        raise FileNotFoundError('분석결과/ 폴더에 분석결과_*.json 파일이 없습니다.')
+    return max(files, key=os.path.getmtime)
 
-    path = sys.argv[1]
+
+def main():
+    if len(sys.argv) >= 2:
+        path = sys.argv[1]
+    else:
+        path = find_latest()
+        print(f'자동 탐색: {path}')
+
+
     with open(path, 'r', encoding='utf-8') as f:
         data = json.load(f)
 

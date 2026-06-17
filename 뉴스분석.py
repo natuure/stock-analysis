@@ -289,8 +289,9 @@ def main():
         print(f'→ {len(news)}건')
         time.sleep(0.1)
 
+    os.makedirs('분석결과', exist_ok=True)
     output = {'date': date, 'vol': vol, 'rate': rate, 'news': news_map}
-    out_file = f'뉴스데이터_{date.replace("-", "")}.json'
+    out_file = os.path.join('분석결과', f'뉴스데이터_{date.replace("-", "")}.json')
     with open(out_file, 'w', encoding='utf-8') as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
 
