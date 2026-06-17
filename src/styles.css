@@ -234,7 +234,7 @@ input  { font-family: inherit; outline: none; }
 .tbl-card { background: var(--c-bg); border-radius: var(--r-md); box-shadow: var(--shadow-card); overflow: hidden; }
 .tbl-head { padding: 14px 18px; border-bottom: 1px solid var(--c-border); }
 .tbl-head-title { font-size: 14px; font-weight: 700; color: var(--c-heading); }
-.tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.tbl-wrap { overflow-x: auto; overflow-y: auto; max-height: 1040px; -webkit-overflow-scrolling: touch; }
 
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 thead th {
@@ -243,6 +243,7 @@ thead th {
   border-bottom: 1px solid var(--c-border);
   white-space: nowrap; cursor: pointer; user-select: none;
   background: var(--c-bg); transition: color .15s;
+  position: sticky; top: 0; z-index: 1;
 }
 thead th:first-child  { text-align: center; width: 42px; }
 thead th:nth-child(2) { text-align: left; }
