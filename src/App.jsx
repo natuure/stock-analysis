@@ -112,7 +112,7 @@ export default function App() {
     setSectors(data.sectors || {});
     setDate(data.date);
     setCalSelected(dateISO);
-    setAnalysisResult(null);
+    setAnalysisResult(data.analysisResult || null);
   }
 
   async function startAnalysis() {
@@ -121,7 +121,13 @@ export default function App() {
     try {
       const text = await callAnalysis(vol, rate, dateToISO(date));
       const m = text.match(/\{[\s\S]+\}/);
-      setAnalysisResult(m ? JSON.parse(m[0]) : null);
+      const result = m ? JSON.parse(m[0]) : null;
+      setAnalysisResult(result);
+      if (result) {
+        const iso = dateToISO(date);
+        const saved = loadAnalysisFromStorage(iso);
+        if (saved) lsSet(`analysis_${iso}`, JSON.stringify({ ...saved, analysisResult: result }));
+      }
     } catch (e) {
       showToast('오류: ' + e.message);
     } finally {
