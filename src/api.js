@@ -17,8 +17,8 @@ export async function callAnalysis(volumeStocks, rateStocks, date) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      volumeStocks: volumeStocks.slice(0, 30).map(s => ({ name: s.name, changeRate: s.changeRate, sector: s.sector })),
-      rateStocks:   rateStocks.slice(0, 30).map(s => ({ name: s.name, changeRate: s.changeRate, sector: s.sector })),
+      volumeStocks: volumeStocks.slice(0, 30).map(s => ({ name: s.name, changeRate: s.changeRate })),
+      rateStocks:   rateStocks.slice(0, 30).map(s => ({ name: s.name, changeRate: s.changeRate })),
       date,
     }),
   });
