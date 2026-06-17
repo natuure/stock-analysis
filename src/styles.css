@@ -221,7 +221,10 @@ input  { font-family: inherit; outline: none; }
   border-radius: var(--r-pill); background: rgba(100,168,255,.12); color: #2272eb;
 }
 .a-rate { font-size: 12px; font-weight: 700; margin-left: auto; font-variant-numeric: tabular-nums; }
-.a-reason { font-size: 13px; color: var(--c-body); line-height: 1.6; }
+.a-reason  { font-size: 13px; color: var(--c-body); line-height: 1.6; }
+.a-summary { font-size: 13px; font-weight: 600; color: var(--c-heading); margin: 4px 0 2px; line-height: 1.5; }
+.a-detail  { font-size: 12px; color: var(--c-body); margin: 2px 0; line-height: 1.5; }
+.a-label   { font-weight: 600; color: var(--c-muted); margin-right: 5px; }
 
 /* ── Tables ───────────────────────────────────────────────── */
 .tables-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }

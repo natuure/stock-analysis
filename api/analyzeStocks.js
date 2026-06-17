@@ -1,33 +1,58 @@
 const https = require('https');
 
+const SPAM_KEYWORDS = ['무료 리딩방', '카톡방', '클릭 시 이동', '급등주 추천', 'vip 회원', '선착순 모집'];
+
 function stripHtml(str) {
   return String(str || '').replace(/<[^>]+>/g, '').replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&#\d+;/g, '').trim();
 }
 
-function fetchNaverNews(stockName) {
+function fetchNaverNews(stockName, targetDate, rangedays) {
   return new Promise((resolve) => {
     const clientId = process.env.NAVER_CLIENT_ID;
     const clientSecret = process.env.NAVER_CLIENT_SECRET;
     if (!clientId || !clientSecret) return resolve([]);
 
-    const query = encodeURIComponent(`${stockName} 주가`);
+    // AI검색.md ① 필수 패턴: 특징주 쿼리 + 스팸 제외
+    const query = encodeURIComponent(`"${stockName} 특징주" -리딩방 -카톡방 -추천`);
     const options = {
       hostname: 'openapi.naver.com',
-      path: `/v1/search/news.json?query=${query}&display=3&sort=date`,
+      path: `/v1/search/news.json?query=${query}&display=10&sort=date&start=1`,
       method: 'GET',
       headers: {
         'X-Naver-Client-Id': clientId,
         'X-Naver-Client-Secret': clientSecret,
       },
     };
+
     const chunks = [];
     const req = https.request(options, (res) => {
       res.on('data', c => chunks.push(c));
       res.on('end', () => {
         try {
           const data = JSON.parse(Buffer.concat(chunks).toString('utf-8'));
-          const titles = (data.items || []).map(item => stripHtml(item.title)).filter(Boolean);
-          resolve(titles);
+          let items = data.items || [];
+
+          // 날짜 범위 필터링
+          if (targetDate) {
+            const targetStart = new Date(targetDate + 'T00:00:00+09:00');
+            const targetEnd = new Date(targetStart);
+            targetEnd.setDate(targetEnd.getDate() + (rangedays > 0 ? rangedays + 1 : 1));
+            items = items.filter(item => {
+              const d = new Date(item.pubDate);
+              return d >= targetStart && d < targetEnd;
+            });
+          }
+
+          // 스팸 필터링
+          items = items.filter(item => {
+            const text = (item.title + item.description).toLowerCase();
+            return !SPAM_KEYWORDS.some(kw => text.includes(kw));
+          });
+
+          resolve(items.slice(0, 5).map(item => ({
+            title: stripHtml(item.title),
+            description: stripHtml(item.description),
+          })));
         } catch { resolve([]); }
       });
     });
@@ -40,11 +65,15 @@ function fetchNaverNews(stockName) {
 function buildPrompt(date, vol, rate, newsMap) {
   const fmt = (list) => list.slice(0, 30).map((s, i) => {
     const news = newsMap[s.name] || [];
-    const newsLine = news.length ? `\n   최신뉴스: ${news.map(n => `[${n}]`).join(' ')}` : '';
-    return `${i + 1}. ${s.name} | 등락률: ${s.changeRate >= 0 ? '+' : ''}${s.changeRate}%${newsLine}`;
-  }).join('\n');
+    const newsLines = news.length
+      ? news.map((n, j) => `   뉴스${j + 1}: [${n.title}] ${n.description}`).join('\n')
+      : '   뉴스: 없음 (등락률과 시장 흐름으로 추정)';
+    return `${i + 1}. ${s.name} | 등락률: ${s.changeRate >= 0 ? '+' : ''}${s.changeRate}%\n${newsLines}`;
+  }).join('\n\n');
 
-  return `오늘은 ${date || '알 수 없는 날짜'}입니다. 아래는 한국 주식시장 데이터와 종목별 최신 뉴스입니다.
+  return `당신은 대한민국 주식 시장의 전문 시장 분석가(Market Analyst)입니다.
+${date || '알 수 없는 날짜'}을 당일로 가정하여, 아래 종목별 수집된 뉴스를 바탕으로 분석하세요.
+노이즈를 제외하고 팩트 기반으로 명확하게 답변하세요.
 
 [거래대금 상위 30위]
 ${fmt(vol)}
@@ -52,19 +81,12 @@ ${fmt(vol)}
 [등락률 상위 30위]
 ${fmt(rate)}
 
-위 뉴스를 근거로 각 종목이 오늘 급등하거나 거래가 집중된 이유를 분석하세요.
-다음 관점 중 해당하는 것을 명시하세요:
-- 실적/공시 이슈
-- 수주·계약·파트너십 뉴스
-- 정책·규제 수혜
-- 업종 동반 상승 (대장주 연동)
-- AI·반도체·배터리·방산·로봇 등 테마 모멘텀
-
-뉴스가 없는 종목은 등락률과 시장 흐름으로 추정하세요.
-종목당 1~2줄로 간결하게 작성하세요.
+각 종목에 대해 다음을 분석하세요:
+1. 오늘 급등한 핵심 사유 (실적/공시/수주/테마 등)
+2. 거래대금이 폭발적으로 몰린 직접적인 트리거 (공시, 글로벌 이슈, 테마 편입 등)
 
 반드시 아래 JSON 형식만 응답 (설명 텍스트 없이):
-{"거래대금":[{"종목명":"...","이유":"..."}],"등락률":[{"종목명":"...","이유":"..."}]}`;
+{"거래대금":[{"종목명":"...","한줄요약":"...","상승원인":"...","트리거":"...","테마섹터":"..."}],"등락률":[{"종목명":"...","한줄요약":"...","상승원인":"...","트리거":"...","테마섹터":"..."}]}`;
 }
 
 function callClaude(apiKey, prompt) {
@@ -121,10 +143,16 @@ module.exports = async (req, res) => {
 
   const { volumeStocks = [], rateStocks = [], date } = req.body || {};
 
+  // 분석 날짜 기준으로 뉴스 검색 범위 결정
+  const today = new Date();
+  const target = date ? new Date(date + 'T00:00:00+09:00') : today;
+  const diffDays = Math.floor((today - target) / 86400000);
+  const rangedays = diffDays >= 3 ? 3 : 0;
+
   // 중복 제거 후 종목별 뉴스 병렬 조회
   const uniqueNames = [...new Set([...volumeStocks, ...rateStocks].map(s => s.name))];
   const newsEntries = await Promise.all(
-    uniqueNames.map(name => fetchNaverNews(name).then(news => [name, news]))
+    uniqueNames.map(name => fetchNaverNews(name, date, rangedays).then(news => [name, news]))
   );
   const newsMap = Object.fromEntries(newsEntries);
 

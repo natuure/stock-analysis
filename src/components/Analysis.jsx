@@ -29,9 +29,13 @@ function AnalysisResult({ result, vol, rate }) {
                 <div className="a-head">
                   <span className="a-name">{item.종목명}</span>
                   {s?.sector && <span className="a-sector">{s.sector}</span>}
-                  {rateStr && <span className={`a-rate ${rc(s.changeRate)}`}>{rateStr}</span>}
+                  {rateStr && <span className={`a-rate ${rc(s?.changeRate)}`}>{rateStr}</span>}
                 </div>
-                <div className="a-reason">{item.이유 || '-'}</div>
+                {item.한줄요약 && <div className="a-summary">{item.한줄요약}</div>}
+                {item.상승원인 && <div className="a-detail"><span className="a-label">상승원인</span>{item.상승원인}</div>}
+                {item.트리거   && <div className="a-detail"><span className="a-label">트리거</span>{item.트리거}</div>}
+                {item.테마섹터 && <div className="a-detail"><span className="a-label">테마</span>{item.테마섹터}</div>}
+                {item.이유     && <div className="a-reason">{item.이유}</div>}
               </div>
             );
           })}
