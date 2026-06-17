@@ -42,7 +42,7 @@ function CardA({ vol }) {
         <div className="rank-item" key={s.code}>
           <span className={`rank-num${i < 3 ? ' top' : ''}`}>{i + 1}</span>
           <span className="rank-name">{s.name}</span>
-          <span className="rank-val">{s.ratio.toFixed(1)}%</span>
+          <span className="rank-val" style={{ fontSize: 11 }}>{fmtN(s.tradingVolume)} / {fmtN(s.marketCap)}</span>
         </div>
       ))}
     </div>
