@@ -49,6 +49,20 @@ def fetch_market_data():
     df = df[(df['Market'] != 'KONEX') & (df['Close'] > 0)]
     return df
 
+def fetch_indices():
+    """코스피·코스닥 지수의 최근 거래일 종가/전일대비 포인트·등락률."""
+    end = datetime.now()
+    start = end - timedelta(days=7)
+    start_str, end_str = start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d')
+
+    def last_two(ticker):
+        df = fdr.DataReader(ticker, start_str, end_str)
+        close, prev_close = float(df['Close'].iloc[-1]), float(df['Close'].iloc[-2])
+        change = close - prev_close
+        return {'close': close, 'change': change, 'changeRate': change / prev_close * 100}
+
+    return {'kospi': last_two('KS11'), 'kosdaq': last_two('KQ11')}
+
 def get_previous_vol_ranks(today_date_str):
     """직전 거래일의 거래대금 순위를 {종목코드: 순위} 형태로 반환."""
     if not MONGODB_URI:
@@ -185,7 +199,7 @@ def fetch_news(name, file_date_str):
 
 # ── MongoDB 저장 ──────────────────────────────────────────────────────────────
 
-def save_to_mongodb(date, date_korean, vol, rate):
+def save_to_mongodb(date, date_korean, vol, rate, indices):
     if not MONGODB_URI:
         print('[경고] MONGODB_URI 없음 — MongoDB 저장 건너뜀')
         return
@@ -194,7 +208,7 @@ def save_to_mongodb(date, date_korean, vol, rate):
         col = client.get_default_database()['stock_data']
         col.update_one(
             {'_id': date},
-            {'$set': {'vol': vol, 'rate': rate, 'date': date_korean}},
+            {'$set': {'vol': vol, 'rate': rate, 'date': date_korean, 'indices': indices}},
             upsert=True,
         )
         client.close()
@@ -276,8 +290,12 @@ def main():
     rate = build_rate_list(df)
     print(f'거래대금 상위 {len(vol)}개, 등락률 상위 {len(rate)}개 종목 산출 완료')
 
+    indices = fetch_indices()
+    print(f"코스피 {indices['kospi']['close']:.2f} ({indices['kospi']['changeRate']:+.2f}%), "
+          f"코스닥 {indices['kosdaq']['close']:.2f} ({indices['kosdaq']['changeRate']:+.2f}%)")
+
     # MongoDB에 종목 데이터 저장 (웹앱 자동 로드용)
-    save_to_mongodb(date, date_korean, vol, rate)
+    save_to_mongodb(date, date_korean, vol, rate, indices)
 
     # 토스증권 일봉 캔들 캐싱 (종목 클릭 시 모달에서 사용)
     cache_candles(vol, rate, date)

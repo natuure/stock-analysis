@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import Header from './components/Header';
 import Calendar from './components/Calendar';
 import Cards from './components/Cards';
+import IndexSummary from './components/IndexSummary';
 import Analysis from './components/Analysis';
 import Tables from './components/Tables';
 import StockDetailModal from './components/StockDetailModal';
@@ -15,6 +16,7 @@ export default function App() {
   const [vol,     setVol]     = useState(null);
   const [rate,    setRate]    = useState(null);
   const [date,    setDate]    = useState(null);
+  const [indices, setIndices] = useState(null);
   const [analysisExcel, setAnalysisExcel] = useState(null);
 
   const [calYear,     setCalYear]     = useState(() => new Date().getFullYear());
@@ -58,6 +60,7 @@ export default function App() {
       setVol(data.vol);
       setRate(data.rate);
       setDate(data.date);
+      setIndices(data.indices || null);
       setAnalysisExcel(data.analysisExcel || null);
       setAiAnalysis(null);
       setCalSelected(dateISO);
@@ -67,7 +70,7 @@ export default function App() {
     // localStorage에 없으면 MongoDB에서 로드
     fetch(`/api/getData?date=${dateISO}`)
       .then(r => r.json())
-      .then(({ vol, rate, date }) => {
+      .then(({ vol, rate, date, indices }) => {
         if (!vol) return;
         volRef.current  = vol;
         rateRef.current = rate;
@@ -75,10 +78,11 @@ export default function App() {
         setVol(vol);
         setRate(rate);
         setDate(date);
+        setIndices(indices || null);
         setAnalysisExcel(null);
         setAiAnalysis(null);
         setCalSelected(dateISO);
-        saveAnalysisToStorage(dateISO, { vol, rate, date });
+        saveAnalysisToStorage(dateISO, { vol, rate, date, indices });
         fetchAiAnalysis(dateISO);
       })
       .catch(() => {});
@@ -119,6 +123,7 @@ export default function App() {
       />
       {showMain && (
         <main>
+          <IndexSummary indices={indices} />
           <Cards vol={vol} rate={rate} />
           <Analysis analysisExcel={analysisExcel} aiAnalysis={aiAnalysis} />
           <h2 className="sec-title" style={{ marginTop: 36 }}>종목 데이터</h2>

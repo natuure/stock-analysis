@@ -141,6 +141,11 @@ input  { font-family: inherit; outline: none; }
 }
 .card-title svg { width: 13px; height: 13px; }
 
+.index-card { text-align: center; }
+.index-label { font-size: 13px; font-weight: 700; color: var(--c-muted); margin-bottom: 8px; }
+.index-close { font-size: 26px; font-weight: 700; color: var(--c-heading); font-variant-numeric: tabular-nums; }
+.index-change { font-size: 14px; font-weight: 600; margin-top: 4px; font-variant-numeric: tabular-nums; }
+
 /* ── Rank list ────────────────────────────────────────────── */
 .rank-list { display: flex; flex-direction: column; gap: 9px; }
 .rank-item { display: flex; align-items: center; gap: 8px; }
