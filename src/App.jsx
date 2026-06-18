@@ -7,7 +7,7 @@ import Analysis from './components/Analysis';
 import Tables from './components/Tables';
 import StockDetailModal from './components/StockDetailModal';
 import {
-  dateToISO,
+  dateToISO, CACHE_VERSION,
   saveAnalysisToStorage, loadAnalysisFromStorage,
   loadWeeklyFromStorage,
 } from './utils';
@@ -53,7 +53,7 @@ export default function App() {
 
   function loadAnalysis(dateISO) {
     const data = loadAnalysisFromStorage(dateISO);
-    if (data) {
+    if (data && data._v === CACHE_VERSION) {
       volRef.current  = data.vol;
       rateRef.current = data.rate;
       dateRef.current = data.date;
