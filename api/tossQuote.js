@@ -1,4 +1,13 @@
-const { tossGet } = require('./_toss');
+const { MongoClient } = require('mongodb');
+
+let client = null;
+async function getCol() {
+  if (!client) {
+    client = new MongoClient(process.env.MONGODB_URI);
+    await client.connect();
+  }
+  return client.db().collection('candles');
+}
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -11,11 +20,9 @@ module.exports = async (req, res) => {
   if (!symbol || !date) return res.status(400).json({ error: 'symbol, date 파라미터 필요' });
 
   try {
-    const before = `${date}T16:00:00+09:00`;
-    const candles = await tossGet(
-      `/api/v1/candles?symbol=${encodeURIComponent(symbol)}&interval=1d&count=60&before=${encodeURIComponent(before)}`
-    );
-    return res.json({ candles: candles.candles });
+    const col = await getCol();
+    const doc = await col.findOne({ _id: `${symbol}_${date}` });
+    return res.json({ candles: doc ? doc.candles : [] });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }

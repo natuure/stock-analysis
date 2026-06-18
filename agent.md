@@ -16,6 +16,8 @@ python 뉴스분석.py  ← 장마감 후 실행
     ├── 거래대금 상위 50 / 등락률 상위 50(거래대금 300억↑) 산출
     ├── 직전 거래일 순위와 비교해 prevRank 계산 (MongoDB 조회)
     ├── MongoDB stock_data 컬렉션 저장
+    ├── 토스증권 API로 거래대금+등락률 종목(최대 100개)의 일봉 캔들 60개 미리 조회
+    │     → MongoDB candles 컬렉션 캐싱 (Vercel은 토스 API를 직접 호출하지 않음, 아래 참고)
     ├── Naver 뉴스 API 검색 (AI검색.md 쿼리 패턴)
     └── 분석결과/뉴스데이터_YYYYMMDD.json 저장
          ↓
@@ -32,8 +34,13 @@ python 저장분석.py  ← 분석결과/ 폴더 최신 파일 자동 탐색
     └── /api/getAnalysis?date= → ai_analysis 조회
          → 화면 자동 표시
          ↓
-종목 행 클릭 → /api/tossQuote?symbol=&date= → 토스증권 API 일봉 캔들 60개 조회 → 모달 표시
+종목 행 클릭 → /api/tossQuote?symbol=&date= → MongoDB candles 컬렉션 조회 → 모달에 캔들차트 표시
 ```
+
+> ⚠️ **토스증권 API는 IP 허용 목록 기반**이라 Vercel 서버리스 함수(유동 IP)에서 직접 호출하면
+> `access_denied: IP address not allowed` 오류가 난다. 그래서 토스 API 호출은 고정 IP인
+> 로컬 `뉴스분석.py`에서만 수행하고, Vercel `/api/tossQuote`는 MongoDB `candles` 컬렉션을
+> 읽기만 한다. 따라서 캔들 차트는 **그날 거래대금/등락률 상위 50에 포함된 종목만** 조회 가능.
 
 ---
 
@@ -48,19 +55,19 @@ src/                                 api/getData.js                  MongoDB Atl
     Header, Calendar                   ai_analysis 조회                vol, rate, date
     Cards, Tables, Analysis          api/analyzeStocks.js            ai_analysis 컬렉션
     StockDetailModal                   Claude API 프록시 (미사용)       _id = "YYYY-MM-DD"
-  utils.js                           api/tossQuote.js                 analysis = {테마,거래대금,등락률}
-  styles.css                           토스증권 캔들 조회 프록시
-                                      api/_toss.js
-                                        OAuth2 토큰 발급·캐싱
+  utils.js                           api/tossQuote.js                 candles 컬렉션 (토스 캔들 캐시)
+  styles.css                           candles 컬렉션 조회만 함          _id = "종목코드_YYYY-MM-DD"
+                                        (토스 API 직접 호출 안 함)        candles: [...]
 
-Python (로컬 실행)
-  뉴스분석.py   ← FinanceDataReader 수집 + Naver 뉴스 수집 + stock_data 저장
+Python (로컬 실행, 고정 IP)
+  뉴스분석.py   ← FinanceDataReader 수집 + 토스 캔들 캐싱 + Naver 뉴스 수집 + stock_data 저장
   저장분석.py   ← ai_analysis 저장
 ```
 
 - **GitHub 저장소**: https://github.com/natuure/stock-analysis.git
 - **Vercel 자동 배포**: master 브랜치 push → 자동 빌드·배포
-- **Vercel 환경변수**: `MONGODB_URI`, `ANTHROPIC_API_KEY`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`, `TOSS_CLIENT_ID`, `TOSS_CLIENT_SECRET`
+- **Vercel 환경변수**: `MONGODB_URI`, `ANTHROPIC_API_KEY`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`
+- `TOSS_CLIENT_ID`/`TOSS_CLIENT_SECRET`는 **로컬 `.env.local`에만** 필요 (Vercel은 토스 API를 호출하지 않으므로 Vercel 환경변수 등록은 불필요, 등록해 둬도 무해함)
 
 ---
 
@@ -72,8 +79,7 @@ Python (로컬 실행)
 │   ├── getData.js           # GET ?date= → stock_data 조회 / 날짜 목록 반환
 │   ├── getAnalysis.js       # GET ?date= → ai_analysis 조회
 │   ├── analyzeStocks.js     # Claude API 프록시 (현재 미사용)
-│   ├── tossQuote.js         # GET ?symbol=&date= → 토스증권 일봉 캔들 60개 조회
-│   └── _toss.js             # 토스증권 OAuth2 토큰 발급·캐싱 (라우트 아님)
+│   └── tossQuote.js         # GET ?symbol=&date= → MongoDB candles 컬렉션 조회 (토스 API 직접 호출 안 함)
 ├── src/
 │   ├── main.jsx
 │   ├── App.jsx              # 상태 관리 (selectedStock 추가 → StockDetailModal 연결)
@@ -111,8 +117,10 @@ python 뉴스분석.py   # 장마감 후 실행. 오늘 날짜 기준 KRX 전종
 ```
 - FinanceDataReader(`fdr.StockListing('KRX')`)로 전종목 시세 1회 호출 (KONEX 제외)
 - 거래대금 상위 50 / 등락률 상위 50(거래대금 300억↑ 대상) 산출
-- `분석결과/뉴스데이터_YYYYMMDD.json` 생성
 - MongoDB `stock_data` 컬렉션에 저장 (웹앱 달력 초록 점 자동 표시)
+- 거래대금+등락률 종목(최대 100개)의 토스증권 일봉 캔들 60개를 미리 조회해 MongoDB `candles`에 캐싱
+  (토스 API는 IP 허용 목록 기반이라 고정 IP인 로컬에서만 호출, Vercel은 직접 호출하지 않음)
+- `분석결과/뉴스데이터_YYYYMMDD.json` 생성
 - Naver 뉴스 쿼리: `{name} 특징주`, `{name} 급등 이유`, `{name} 상승 배경` 등 8개
 - 날짜 기준 검색: 파일날짜 ~ 오늘 (3일 이상 지난 경우 파일날짜+3일로 제한)
 - 당일 기사 우선 정렬
@@ -132,6 +140,7 @@ python 저장분석.py "분석결과/분석결과_2026-06-17.json"  # 파일 직
 |--------|------|------|
 | `stock_data` | 일별 종목 데이터 | `{ _id: "YYYY-MM-DD", vol: [...], rate: [...], date: "2026년 6월 17일 (화)" }` |
 | `ai_analysis` | AI 분석 결과 | `{ _id: "YYYY-MM-DD", analysis: { 테마:[...], 거래대금:[...], 등락률:[...] } }` |
+| `candles` | 종목별 토스 일봉 캔들 캐시 | `{ _id: "종목코드_YYYY-MM-DD", candles: [...] }` (해당일 거래대금/등락률 상위 종목만) |
 
 > ⚠️ `wics_cache` 컬렉션은 삭제됨 (WICS 업종 분류 기능 제거)
 
@@ -232,7 +241,7 @@ analysis_YYYY-MM-DD  → JSON { vol:[...], rate:[...], date:"2026년 6월 17일 
 | `/api/getData` | GET | date 없음: 날짜 목록 반환 / date 있음: 해당일 vol+rate 반환 |
 | `/api/getAnalysis` | GET | `?date=YYYY-MM-DD` → ai_analysis 반환 |
 | `/api/analyzeStocks` | POST | Claude API 프록시 (현재 미사용) |
-| `/api/tossQuote` | GET | `?symbol=&date=` → 토스증권 일봉 캔들 60개 (해당 날짜 기준) |
+| `/api/tossQuote` | GET | `?symbol=&date=` → MongoDB `candles` 컬렉션에서 일봉 캔들 60개 조회 (토스 API 직접 호출 안 함) |
 
 ---
 
@@ -285,8 +294,8 @@ analysis_YYYY-MM-DD  → JSON { vol:[...], rate:[...], date:"2026년 6월 17일 
 | `ANTHROPIC_API_KEY` | .env.local + Vercel | Claude API (analyzeStocks 미사용) |
 | `NAVER_CLIENT_ID` | .env.local | Naver 검색 API (뉴스분석.py) |
 | `NAVER_CLIENT_SECRET` | .env.local | Naver 검색 API (뉴스분석.py) |
-| `TOSS_CLIENT_ID` | .env.local + Vercel | 토스증권 Open API OAuth2 (api/tossQuote.js) |
-| `TOSS_CLIENT_SECRET` | .env.local + Vercel | 토스증권 Open API OAuth2 (api/tossQuote.js) |
+| `TOSS_CLIENT_ID` | .env.local | 토스증권 Open API OAuth2 (뉴스분석.py, IP 허용 목록 때문에 로컬에서만 사용) |
+| `TOSS_CLIENT_SECRET` | .env.local | 토스증권 Open API OAuth2 (뉴스분석.py, IP 허용 목록 때문에 로컬에서만 사용) |
 
 ---
 

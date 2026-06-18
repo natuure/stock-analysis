@@ -23,6 +23,9 @@ load_dotenv('.env.local')
 NAVER_ID     = os.getenv('NAVER_CLIENT_ID')
 NAVER_SECRET = os.getenv('NAVER_CLIENT_SECRET')
 MONGODB_URI  = os.getenv('MONGODB_URI')
+TOSS_CLIENT_ID     = os.getenv('TOSS_CLIENT_ID')
+TOSS_CLIENT_SECRET = os.getenv('TOSS_CLIENT_SECRET')
+TOSS_BASE = 'https://openapi.tossinvest.com'
 
 SPAM_KEYWORDS = ['무료 리딩방', '카톡방', '클릭 시 이동', '급등주 추천', 'vip 회원', '선착순 모집']
 DAYS_KO = ['월', '화', '수', '목', '금', '토', '일']
@@ -200,6 +203,60 @@ def save_to_mongodb(date, date_korean, vol, rate):
         print(f'[오류] MongoDB 저장 실패: {e}')
 
 
+# ── 토스증권 캔들 캐싱 ────────────────────────────────────────────────────────
+# Vercel 서버리스 함수는 토스 API의 IP 허용 목록에 등록할 수 없는 유동 IP를 쓰므로
+# (access_denied: IP address not allowed), 고정 IP인 로컬에서 미리 가져와 MongoDB에
+# 캐싱하고 api/tossQuote.js는 MongoDB만 읽도록 한다.
+
+def get_toss_token():
+    r = requests.post(f'{TOSS_BASE}/oauth2/token', data={
+        'grant_type': 'client_credentials',
+        'client_id': TOSS_CLIENT_ID,
+        'client_secret': TOSS_CLIENT_SECRET,
+    }, timeout=10)
+    r.raise_for_status()
+    return r.json()['access_token']
+
+def fetch_candles(token, code, date_str):
+    before = f'{date_str}T16:00:00+09:00'
+    r = requests.get(f'{TOSS_BASE}/api/v1/candles', params={
+        'symbol': code, 'interval': '1d', 'count': 60, 'before': before,
+    }, headers={'Authorization': f'Bearer {token}'}, timeout=10)
+    r.raise_for_status()
+    return r.json()['result']['candles']
+
+def cache_candles(vol, rate, date_str):
+    if not TOSS_CLIENT_ID or not TOSS_CLIENT_SECRET:
+        print('[경고] TOSS_CLIENT_ID/SECRET 없음 — 캔들 캐싱 건너뜀')
+        return
+    if not MONGODB_URI:
+        print('[경고] MONGODB_URI 없음 — 캔들 캐싱 건너뜀')
+        return
+
+    codes = list(dict.fromkeys(s['code'] for s in vol + rate))
+    print(f'\n토스 캔들 캐싱 시작 ({len(codes)}개 종목)...')
+    try:
+        token = get_toss_token()
+    except Exception as e:
+        print(f'[오류] 토스 토큰 발급 실패: {e}')
+        return
+
+    client = MongoClient(MONGODB_URI)
+    col = client.get_default_database()['candles']
+    ok = fail = 0
+    for i, code in enumerate(codes, 1):
+        try:
+            candles = fetch_candles(token, code, date_str)
+            col.update_one({'_id': f'{code}_{date_str}'}, {'$set': {'candles': candles}}, upsert=True)
+            ok += 1
+        except Exception as e:
+            fail += 1
+            print(f'  [{i}/{len(codes)}] {code} 실패: {e}')
+        time.sleep(1.1)  # 캔들 조회 Rate Limit (burst 5, 초당 1개 충전) 대비
+    client.close()
+    print(f'캔들 캐싱 완료: {ok}개 성공, {fail}개 실패')
+
+
 # ── 메인 ─────────────────────────────────────────────────────────────────────
 
 def main():
@@ -218,6 +275,9 @@ def main():
 
     # MongoDB에 종목 데이터 저장 (웹앱 자동 로드용)
     save_to_mongodb(date, date_korean, vol, rate)
+
+    # 토스증권 일봉 캔들 캐싱 (종목 클릭 시 모달에서 사용)
+    cache_candles(vol, rate, date)
 
     # Naver 뉴스 수집
     names = list(dict.fromkeys([s['name'] for s in vol + rate]))
