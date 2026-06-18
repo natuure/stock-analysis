@@ -1,19 +1,20 @@
 # 주식 거래대금·등락률 분석 — 프로젝트 컨텍스트
 
 ## 프로젝트 개요
-매일 HTS에서 추출한 거래대금·등락률 합본 엑셀 파일을 **Python 스크립트**로 처리하면
-MongoDB에 자동 저장 → 웹앱 달력에서 날짜 클릭 시 데이터·AI 분석 결과 자동 표시.
-브라우저 파일 업로드 없이 Python 스크립트 + MongoDB 기반으로 완전 자동화됨.
+매일 장마감 후 **Python 스크립트**가 FinanceDataReader로 KRX 전종목 시세를 자동 수집해
+MongoDB에 저장 → 웹앱 달력에서 날짜 클릭 시 데이터·AI 분석 결과 자동 표시.
+HTS 엑셀 수동 업로드 단계 없이 Python 스크립트 + MongoDB 기반으로 완전 자동화됨.
+종목 클릭 시 토스증권 Open API로 실시간 일봉 캔들 차트도 조회 가능.
 
 ---
 
 ## 데이터 흐름 (현재)
 
 ```
-HTS 엑셀 파일 (거래대금,등락률_YYMMDD.xlsx)
-    ↓
-python 뉴스분석.py  ← 데일리분석/ 폴더 최신 파일 자동 탐색
-    ├── 거래대금/등락률 파싱 (pandas)
+python 뉴스분석.py  ← 장마감 후 실행
+    ├── FinanceDataReader로 KRX 전종목 시세 수집 (fdr.StockListing('KRX'))
+    ├── 거래대금 상위 50 / 등락률 상위 50(거래대금 300억↑) 산출
+    ├── 직전 거래일 순위와 비교해 prevRank 계산 (MongoDB 조회)
     ├── MongoDB stock_data 컬렉션 저장
     ├── Naver 뉴스 API 검색 (AI검색.md 쿼리 패턴)
     └── 분석결과/뉴스데이터_YYYYMMDD.json 저장
@@ -30,6 +31,8 @@ python 저장분석.py  ← 분석결과/ 폴더 최신 파일 자동 탐색
     ├── /api/getData?date= → stock_data 조회
     └── /api/getAnalysis?date= → ai_analysis 조회
          → 화면 자동 표시
+         ↓
+종목 행 클릭 → /api/tossQuote?symbol=&date= → 토스증권 API 일봉 캔들 60개 조회 → 모달 표시
 ```
 
 ---
@@ -44,17 +47,20 @@ src/                                 api/getData.js                  MongoDB Atl
   components/                        api/getAnalysis.js                _id = "YYYY-MM-DD"
     Header, Calendar                   ai_analysis 조회                vol, rate, date
     Cards, Tables, Analysis          api/analyzeStocks.js            ai_analysis 컬렉션
-  utils.js                             Claude API 프록시 (미사용)       _id = "YYYY-MM-DD"
-  styles.css                                                           analysis = {테마,거래대금,등락률}
+    StockDetailModal                   Claude API 프록시 (미사용)       _id = "YYYY-MM-DD"
+  utils.js                           api/tossQuote.js                 analysis = {테마,거래대금,등락률}
+  styles.css                           토스증권 캔들 조회 프록시
+                                      api/_toss.js
+                                        OAuth2 토큰 발급·캐싱
 
 Python (로컬 실행)
-  뉴스분석.py   ← 엑셀 파싱 + Naver 뉴스 수집 + stock_data 저장
+  뉴스분석.py   ← FinanceDataReader 수집 + Naver 뉴스 수집 + stock_data 저장
   저장분석.py   ← ai_analysis 저장
 ```
 
 - **GitHub 저장소**: https://github.com/natuure/stock-analysis.git
 - **Vercel 자동 배포**: master 브랜치 push → 자동 빌드·배포
-- **Vercel 환경변수**: `MONGODB_URI`, `ANTHROPIC_API_KEY`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`
+- **Vercel 환경변수**: `MONGODB_URI`, `ANTHROPIC_API_KEY`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`, `TOSS_CLIENT_ID`, `TOSS_CLIENT_SECRET`
 
 ---
 
@@ -65,31 +71,34 @@ Python (로컬 실행)
 ├── api/
 │   ├── getData.js           # GET ?date= → stock_data 조회 / 날짜 목록 반환
 │   ├── getAnalysis.js       # GET ?date= → ai_analysis 조회
-│   └── analyzeStocks.js     # Claude API 프록시 (현재 미사용)
+│   ├── analyzeStocks.js     # Claude API 프록시 (현재 미사용)
+│   ├── tossQuote.js         # GET ?symbol=&date= → 토스증권 일봉 캔들 60개 조회
+│   └── _toss.js             # 토스증권 OAuth2 토큰 발급·캐싱 (라우트 아님)
 ├── src/
 │   ├── main.jsx
-│   ├── App.jsx              # 상태 관리 (Upload 제거, serverDates 추가)
+│   ├── App.jsx              # 상태 관리 (selectedStock 추가 → StockDetailModal 연결)
 │   ├── api.js               # 비어있음 (fetchSectors 제거됨)
-│   ├── utils.js             # parseExcel, normVol, normRate, 날짜 유틸
+│   ├── utils.js             # normVol, normRate, 날짜 유틸
 │   ├── styles.css
 │   └── components/
 │       ├── Header.jsx
 │       ├── Calendar.jsx     # serverDates prop 추가 (MongoDB 날짜 표시)
 │       ├── Cards.jsx        # 카드 2개 (거래대금/시가총액 TOP5, 순위상승 TOP5)
-│       ├── Tables.jsx       # 거래대금·등락률 테이블
+│       ├── Tables.jsx       # 거래대금·등락률 테이블, 행 클릭 시 onRowClick
+│       ├── StockDetailModal.jsx  # 종목 클릭 시 토스 API 일봉 캔들 차트 모달
 │       └── Analysis.jsx     # ThemeTable + AiPanels + N파일
-├── 뉴스분석.py              # 엑셀 파싱 + Naver 뉴스 + stock_data 저장
+├── 뉴스분석.py              # FinanceDataReader 수집 + Naver 뉴스 + stock_data 저장
 ├── 저장분석.py              # ai_analysis MongoDB 저장
-├── requirements.txt         # pandas, openpyxl, requests, pymongo[srv], python-dotenv
+├── requirements.txt         # pandas, finance-datareader, requests, pymongo[srv], python-dotenv
 ├── AI검색.md                # Naver API 쿼리 패턴 가이드
-├── 데일리분석/              # HTS 엑셀 파일 보관 폴더 (gitignore)
+├── 데일리분석/              # (과거 HTS 엑셀 보관 폴더, 더 이상 스크립트가 사용하지 않음, gitignore 유지)
 ├── 분석결과/                # 뉴스데이터_*.json, 분석결과_*.json (gitignore)
 ├── index.html
 ├── vite.config.js
 ├── package.json
 ├── vercel.json
-├── .env.local               # MONGODB_URI, ANTHROPIC_API_KEY, NAVER_* (git 제외)
-└── .gitignore               # .env.local, node_modules/, dist/, .vercel/, 데일리분석/, 분석결과/, *.xlsx
+├── .env.local               # MONGODB_URI, ANTHROPIC_API_KEY, NAVER_*, TOSS_* (git 제외)
+└── .gitignore               # .env.local, node_modules/, dist/, .vercel/, 데일리분석/, 분석결과/, *.xlsx, *.xls
 ```
 
 ---
@@ -98,9 +107,10 @@ Python (로컬 실행)
 
 ### 뉴스분석.py
 ```bash
-python 뉴스분석.py                          # 데일리분석/ 최신 xlsx 자동 탐색
-python 뉴스분석.py "데일리분석\파일명.xlsx"  # 파일 직접 지정
+python 뉴스분석.py   # 장마감 후 실행. 오늘 날짜 기준 KRX 전종목 자동 수집
 ```
+- FinanceDataReader(`fdr.StockListing('KRX')`)로 전종목 시세 1회 호출 (KONEX 제외)
+- 거래대금 상위 50 / 등락률 상위 50(거래대금 300억↑ 대상) 산출
 - `분석결과/뉴스데이터_YYYYMMDD.json` 생성
 - MongoDB `stock_data` 컬렉션에 저장 (웹앱 달력 초록 점 자동 표시)
 - Naver 뉴스 쿼리: `{name} 특징주`, `{name} 급등 이유`, `{name} 상승 배경` 등 8개
@@ -127,21 +137,15 @@ python 저장분석.py "분석결과/분석결과_2026-06-17.json"  # 파일 직
 
 ---
 
-## 엑셀 파일 구조
+## 데이터 수집 (FinanceDataReader)
 
-**파일명 규칙**: `거래대금,등락률_YYMMDD.xlsx` (합본 파일, 2개 시트)
-→ 파일명에서 날짜 자동 파싱 (`_YYMMDD` 패턴)
-
-**거래대금 시트**:
-```
-순위 | 전일 | 종목코드 | 종목명 | 현재가 | 대비 | 등락률 | 거래량 | 시가총액 | 거래대금
-```
-
-**등락률 시트**:
-```
-순위 | 종목코드 | 종목명 | 현재가 | 대비 | 등락률 | 거래량 | 체결강도
-```
-- 대비 열에 `↑` 포함 시 상한가 처리 (`isUpperLimit: true`)
+`fdr.StockListing('KRX')` 1회 호출로 KRX 전종목(KOSPI/KOSDAQ, KONEX 제외)의
+`Code, Name, Market, Close, Changes, ChagesRatio, Volume, Amount, Marcap`을 가져옴.
+- **거래대금 상위 50**: `Amount` 내림차순
+- **등락률 상위 50**: `Amount >= 300억` 필터 후 `ChagesRatio` 내림차순
+- **상한가 판정**: `changeRate >= 29.5` (`isUpperLimit: true`)
+- **전일 순위(prevRank)**: MongoDB에서 직전 거래일 `stock_data` 문서를 조회해 종목코드로 매칭 (없으면 NEW)
+- **체결강도**: FDR로 계산 불가하여 컬럼 자체 제거됨 (HTS 엑셀 시절에는 있었음)
 
 ---
 
@@ -155,7 +159,8 @@ python 저장분석.py "분석결과/분석결과_2026-06-17.json"  # 파일 직
 
 **rate 항목:**
 ```javascript
-{ rank, code, name, price, change, changeRate, isUpperLimit, volume, contractStrength }
+{ rank, code, name, price, change, changeRate, isUpperLimit, volume }
+// contractStrength 필드 제거됨 (FDR 전환 시 더 이상 제공 불가)
 ```
 
 **localStorage 구조:**
@@ -213,6 +218,11 @@ analysis_YYYY-MM-DD  → JSON { vol:[...], rate:[...], date:"2026년 6월 17일 
 - 날짜 클릭 → localStorage 우선, 없으면 MongoDB에서 로드 후 localStorage 캐시
 - 주간(W##) 클릭 → 주간 요약 표시
 
+### StockDetailModal.jsx
+- 거래대금·등락률 표의 종목 행 클릭 시 오버레이 모달로 표시
+- `/api/tossQuote?symbol=&date=`로 토스증권 일봉 캔들 60개 조회 → SVG 캔들차트 직접 렌더링 (차트 라이브러리 미사용)
+- 선택일 시가·고가·저가·거래량 텍스트 요약 포함
+
 ---
 
 ## API 엔드포인트
@@ -222,6 +232,7 @@ analysis_YYYY-MM-DD  → JSON { vol:[...], rate:[...], date:"2026년 6월 17일 
 | `/api/getData` | GET | date 없음: 날짜 목록 반환 / date 있음: 해당일 vol+rate 반환 |
 | `/api/getAnalysis` | GET | `?date=YYYY-MM-DD` → ai_analysis 반환 |
 | `/api/analyzeStocks` | POST | Claude API 프록시 (현재 미사용) |
+| `/api/tossQuote` | GET | `?symbol=&date=` → 토스증권 일봉 캔들 60개 (해당 날짜 기준) |
 
 ---
 
@@ -240,8 +251,9 @@ analysis_YYYY-MM-DD  → JSON { vol:[...], rate:[...], date:"2026년 6월 17일 
 - 거래대금·등락률 탭 전환 (모바일)
 - 컬럼 클릭 정렬 (asc/desc)
 - **거래대금 컬럼**: 순위 | 종목명 | 현재가 | 등락률 | 거래량 | 거래대금
-- **등락률 컬럼**: 순위 | 종목명 | 현재가 | 등락률 | 거래량 | 체결강도
+- **등락률 컬럼**: 순위 | 종목명 | 현재가 | 등락률 | 거래량
 - 상한가 행: `limit-up` 클래스 (연한 빨강 배경)
+- 행 클릭 → `onRowClick` → `StockDetailModal` 오픈
 
 ---
 
@@ -273,6 +285,8 @@ analysis_YYYY-MM-DD  → JSON { vol:[...], rate:[...], date:"2026년 6월 17일 
 | `ANTHROPIC_API_KEY` | .env.local + Vercel | Claude API (analyzeStocks 미사용) |
 | `NAVER_CLIENT_ID` | .env.local | Naver 검색 API (뉴스분석.py) |
 | `NAVER_CLIENT_SECRET` | .env.local | Naver 검색 API (뉴스분석.py) |
+| `TOSS_CLIENT_ID` | .env.local + Vercel | 토스증권 Open API OAuth2 (api/tossQuote.js) |
+| `TOSS_CLIENT_SECRET` | .env.local + Vercel | 토스증권 Open API OAuth2 (api/tossQuote.js) |
 
 ---
 
@@ -294,4 +308,6 @@ npm install && npm run build
 - **WICS 업종 분류** (getSectors.js 삭제, wics_cache 삭제): 업종 데이터 미표시
 - **SectorBars 카드** (Cards.jsx): WICS 업종 분포 TOP5 카드 제거
 - **sector 필드** (normVol/normRate): 종목 데이터에서 sector 필드 제거
+- **HTS 엑셀 수동 업로드** (`데일리분석/` 폴더, parseExcel류 함수): FinanceDataReader 자동 수집으로 대체
+- **체결강도 필드** (rate.contractStrength): FDR 전환으로 계산 불가하여 제거 (필요 시 별도 데이터 소스로 재도입 검토)
 - **업종.py**: 미사용 스크립트 삭제

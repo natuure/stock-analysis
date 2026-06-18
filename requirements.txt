@@ -1,5 +1,5 @@
 pandas
-openpyxl
+finance-datareader
 requests
 pymongo[srv]
 python-dotenv

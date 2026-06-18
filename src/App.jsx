@@ -4,6 +4,7 @@ import Calendar from './components/Calendar';
 import Cards from './components/Cards';
 import Analysis from './components/Analysis';
 import Tables from './components/Tables';
+import StockDetailModal from './components/StockDetailModal';
 import {
   dateToISO,
   saveAnalysisToStorage, loadAnalysisFromStorage,
@@ -26,6 +27,7 @@ export default function App() {
 
   const [aiAnalysis,  setAiAnalysis]  = useState(null);
   const [serverDates, setServerDates] = useState([]);
+  const [selectedStock, setSelectedStock] = useState(null);
 
   const volRef  = useRef(null);
   const rateRef = useRef(null);
@@ -126,9 +128,17 @@ export default function App() {
             tab={tab}
             onSort={handleSort}
             onTab={setTab}
+            onRowClick={setSelectedStock}
           />
         </main>
       )}
+      <StockDetailModal
+        open={!!selectedStock}
+        code={selectedStock?.code}
+        name={selectedStock?.name}
+        dateISO={dateToISO(date)}
+        onClose={() => setSelectedStock(null)}
+      />
     </div>
   );
 }

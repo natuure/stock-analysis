@@ -5,7 +5,7 @@ function SortIcon({ col, sort }) {
   return <i className="sort-ic">{sort.dir === 'asc' ? '↑' : '↓'}</i>;
 }
 
-function VolTable({ vol, sort, onSort }) {
+function VolTable({ vol, sort, onSort, onRowClick }) {
   const sorted = [...vol].sort((a, b) => {
     const av = a[sort.col], bv = b[sort.col];
     if (typeof av === 'string') return sort.dir === 'asc' ? av.localeCompare(bv, 'ko') : bv.localeCompare(av, 'ko');
@@ -34,7 +34,7 @@ function VolTable({ vol, sort, onSort }) {
       </thead>
       <tbody>
         {sorted.map(s => (
-          <tr key={s.code} className={s.changeRate >= 29.9 ? 'limit-up' : ''}>
+          <tr key={s.code} className={s.changeRate >= 29.9 ? 'limit-up' : ''} onClick={() => onRowClick(s)}>
             <td>{s.rank}</td>
             <td>{s.name}<span className="td-code">{s.code}</span></td>
             <td>{fmtN(s.price)}</td>
@@ -48,7 +48,7 @@ function VolTable({ vol, sort, onSort }) {
   );
 }
 
-function RateTable({ rate, sort, onSort }) {
+function RateTable({ rate, sort, onSort, onRowClick }) {
   const sorted = [...rate].sort((a, b) => {
     const av = a[sort.col], bv = b[sort.col];
     if (typeof av === 'string') return sort.dir === 'asc' ? av.localeCompare(bv, 'ko') : bv.localeCompare(av, 'ko');
@@ -72,18 +72,16 @@ function RateTable({ rate, sort, onSort }) {
           {th('price', '현재가')}
           {th('changeRate', '등락률')}
           {th('volume', '거래량')}
-          {th('contractStrength', '체결강도')}
         </tr>
       </thead>
       <tbody>
         {sorted.map(s => (
-          <tr key={s.code} className={s.isUpperLimit ? 'limit-up' : ''}>
+          <tr key={s.code} className={s.isUpperLimit ? 'limit-up' : ''} onClick={() => onRowClick(s)}>
             <td>{s.rank}</td>
             <td>{s.name}<span className="td-code">{s.code}</span></td>
             <td>{fmtN(s.price)}</td>
             <td className={rc(s.changeRate)}>{s.changeRate >= 0 ? '+' : ''}{s.changeRate.toFixed(2)}%</td>
             <td>{fmtN(s.volume)}</td>
-            <td>{s.contractStrength.toFixed(1)}</td>
           </tr>
         ))}
       </tbody>
@@ -91,7 +89,7 @@ function RateTable({ rate, sort, onSort }) {
   );
 }
 
-export default function Tables({ vol, rate, sortV, sortR, tab, onSort, onTab }) {
+export default function Tables({ vol, rate, sortV, sortR, tab, onSort, onTab, onRowClick }) {
   return (
     <>
       <div className="seg-tabs">
@@ -101,11 +99,11 @@ export default function Tables({ vol, rate, sortV, sortR, tab, onSort, onTab }) 
       <div className="tables-grid">
         <div className={`tbl-card${tab === 'r' ? ' mobile-hidden' : ''}`}>
           <div className="tbl-head"><div className="tbl-head-title">거래대금 상위 50위</div></div>
-          <div className="tbl-wrap"><VolTable vol={vol} sort={sortV} onSort={onSort} /></div>
+          <div className="tbl-wrap"><VolTable vol={vol} sort={sortV} onSort={onSort} onRowClick={onRowClick} /></div>
         </div>
         <div className={`tbl-card${tab === 'v' ? ' mobile-hidden' : ''}`}>
           <div className="tbl-head"><div className="tbl-head-title">등락률 상위 50위</div></div>
-          <div className="tbl-wrap"><RateTable rate={rate} sort={sortR} onSort={onSort} /></div>
+          <div className="tbl-wrap"><RateTable rate={rate} sort={sortR} onSort={onSort} onRowClick={onRowClick} /></div>
         </div>
       </div>
     </>

@@ -10,7 +10,6 @@ export function toNum(v) {
   return parseFloat(String(v).replace(/[,\s]/g, '')) || 0;
 }
 export function toInt(v)   { return parseInt(String(v || '').replace(/,/g, '')) || 0; }
-export function toFloat(v) { return parseFloat(String(v || '').replace(/,/g, '')) || 0; }
 export function toRate(v) {
   if (v === null || v === undefined || v === '') return 0;
   return parseFloat(String(v).replace(/[%,\s]/g, '')) || 0;
@@ -175,7 +174,6 @@ export function normRate(rows) {
       changeRate: cr,
       isUpperLimit: String(r['대비'] || '').includes('↑'),
       volume: toNum(r['거래량']),
-      contractStrength: toFloat(r['체결강도']),
     };
   }).filter(r => r && r.name);
 }

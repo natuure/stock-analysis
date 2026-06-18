@@ -1,7 +1,7 @@
 """
-엑셀 파싱 + Naver 뉴스 수집 + MongoDB 저장 스크립트
-사용법: python 뉴스분석.py [파일명.xlsx]
-       파일명 생략 시 현재 폴더의 최신 xlsx 파일을 자동 탐색
+FinanceDataReader 전종목 수집 + Naver 뉴스 수집 + MongoDB 저장 스크립트
+사용법: python 뉴스분석.py
+       (장마감 후 실행 가정. 오늘 날짜 기준으로 전종목 거래대금/등락률 상위 50종목 자동 수집)
 결과:
   - 뉴스데이터_YYYYMMDD.json 저장 (Claude Code가 읽어 분석)
   - MongoDB stock_data 컬렉션에 거래대금/등락률 데이터 저장
@@ -9,12 +9,10 @@
 
 import os
 import re
-import sys
 import json
-import glob
 import time
 import requests
-import pandas as pd
+import FinanceDataReader as fdr
 from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
 from dotenv import load_dotenv
@@ -32,124 +30,69 @@ DAYS_KO = ['월', '화', '수', '목', '금', '토', '일']
 
 # ── 유틸 ────────────────────────────────────────────────────────────────────
 
-def to_code(v):
-    return re.sub(r'\D', '', str(v or '')).zfill(6)
-
-def to_int(v):
-    try: return int(float(str(v or '').replace(',', '')))
-    except: return 0
-
-def to_rate(v):
-    try: return float(str(v or '').replace('%', '').replace(',', '').strip())
-    except: return 0.0
-
-def to_num(v):
-    try: return float(str(v or '').replace(',', '').strip())
-    except: return 0.0
-
-def to_change(change_val, change_rate):
-    raw = str(change_val or '').replace(',', '').strip()
-    if raw.startswith('+') or raw.startswith('-'):
-        try: return float(raw)
-        except: return 0.0
-    return -to_num(change_val) if change_rate < 0 else to_num(change_val)
-
-def to_prev_rank(v):
-    s = str(v or '').strip()
-    if not s or s in ('-', '신규', 'NEW', 'N/A', '0', 'nan'):
-        return None
-    try:
-        n = int(float(s))
-        return n if n > 0 else None
-    except:
-        return None
-
 def format_date_korean(date_str):
     d = datetime.strptime(date_str, '%Y-%m-%d')
     return f'{d.year}년 {d.month}월 {d.day}일 ({DAYS_KO[d.weekday()]})'
 
 
-# ── 파일 탐색 ────────────────────────────────────────────────────────────────
+# ── FinanceDataReader 전종목 수집 ────────────────────────────────────────────
 
-def find_excel():
-    files = glob.glob('데일리분석/**/*.xlsx', recursive=True) + glob.glob('데일리분석/**/*.xls', recursive=True)
-    if not files:
-        raise FileNotFoundError('데일리분석 폴더에 엑셀 파일이 없습니다.')
-    return max(files, key=os.path.getmtime)
+UPPER_LIMIT_RATE = 29.5
+RATE_MIN_AMOUNT  = 30_000_000_000  # 등락률 순위 집계 대상 최소 거래대금 (300억)
 
-def extract_date(filename):
-    m = re.search(r'_(\d{6})(?:\.|_|$)', os.path.basename(filename))
-    if m:
-        s = m.group(1)
-        year, month, day = 2000 + int(s[:2]), int(s[2:4]), int(s[4:6])
-        if 1 <= month <= 12 and 1 <= day <= 31:
-            return f'{year}-{month:02d}-{day:02d}'
-    return datetime.fromtimestamp(os.path.getmtime(filename)).strftime('%Y-%m-%d')
+def fetch_market_data():
+    """KRX 전종목 시세 조회 (KONEX 제외)."""
+    df = fdr.StockListing('KRX')
+    df = df[(df['Market'] != 'KONEX') & (df['Close'] > 0)]
+    return df
 
+def get_previous_vol_ranks(today_date_str):
+    """직전 거래일의 거래대금 순위를 {종목코드: 순위} 형태로 반환."""
+    if not MONGODB_URI:
+        return {}
+    client = MongoClient(MONGODB_URI)
+    col = client.get_default_database()['stock_data']
+    prev = col.find_one({'_id': {'$lt': today_date_str}}, sort=[('_id', -1)])
+    client.close()
+    if not prev or not prev.get('vol'):
+        return {}
+    return {s['code']: s['rank'] for s in prev['vol']}
 
-# ── 엑셀 파싱 ────────────────────────────────────────────────────────────────
-
-def parse_sheet(xl, hint):
-    matched = next((n for n in xl.sheet_names if hint in n), None)
-    if not matched:
-        return None
-    df = xl.parse(matched, header=None)
-    for i in range(min(10, len(df))):
-        row_vals = [str(v).strip() for v in df.iloc[i]]
-        if '순위' in row_vals and '종목명' in row_vals:
-            df.columns = pd.Index([str(v).strip() for v in df.iloc[i]])
-            return df.iloc[i + 1:].reset_index(drop=True)
-    return None
-
-def norm_vol(df, top=30):
-    if df is None:
-        return []
+def build_vol_list(df, prev_ranks, top=50):
+    top_df = df.sort_values('Amount', ascending=False).head(top)
     result = []
-    for _, r in df.iterrows():
-        rank = to_int(r.get('순위', ''))
-        name = str(r.get('종목명', '')).strip()
-        if not rank or not name or name in ('nan', ''):
-            continue
-        cr = to_rate(r.get('등락률', ''))
+    for rank, (_, r) in enumerate(top_df.iterrows(), start=1):
         result.append({
             'rank': rank,
-            'prevRank': to_prev_rank(r.get('전일', '')),
-            'code': to_code(r.get('종목코드', '')),
-            'name': name,
-            'price': to_num(r.get('현재가', '')),
-            'change': to_change(r.get('대비', ''), cr),
-            'changeRate': cr,
-            'volume': to_num(r.get('거래량', '')),
-            'marketCap': to_num(r.get('시가총액', '')),
-            'tradingVolume': to_num(r.get('거래대금', '')),
+            'prevRank': prev_ranks.get(r['Code']),
+            'code': r['Code'],
+            'name': r['Name'],
+            'price': float(r['Close']),
+            'change': float(r['Changes']),
+            'changeRate': float(r['ChagesRatio']),
+            'volume': float(r['Volume']),
+            'marketCap': float(r['Marcap']),
+            'tradingVolume': float(r['Amount']),
         })
-    result.sort(key=lambda x: x['rank'])
-    return result[:top]
+    return result
 
-def norm_rate(df, top=30):
-    if df is None:
-        return []
+def build_rate_list(df, top=50):
+    eligible = df[df['Amount'] >= RATE_MIN_AMOUNT]
+    top_df = eligible.sort_values('ChagesRatio', ascending=False).head(top)
     result = []
-    for _, r in df.iterrows():
-        rank = to_int(r.get('순위', ''))
-        name = str(r.get('종목명', '')).strip()
-        if not rank or not name or name in ('nan', ''):
-            continue
-        cr = to_rate(r.get('등락률', ''))
-        daeby = str(r.get('대비', ''))
+    for rank, (_, r) in enumerate(top_df.iterrows(), start=1):
+        cr = float(r['ChagesRatio'])
         result.append({
             'rank': rank,
-            'code': to_code(r.get('종목코드', '')),
-            'name': name,
-            'price': to_num(r.get('현재가', '')),
-            'change': to_change(daeby, cr),
+            'code': r['Code'],
+            'name': r['Name'],
+            'price': float(r['Close']),
+            'change': float(r['Changes']),
             'changeRate': cr,
-            'isUpperLimit': '↑' in daeby,
-            'volume': to_num(r.get('거래량', '')),
-            'contractStrength': to_num(r.get('체결강도', '')),
+            'isUpperLimit': cr >= UPPER_LIMIT_RATE,
+            'volume': float(r['Volume']),
         })
-    result.sort(key=lambda x: x['rank'])
-    return result[:top]
+    return result
 
 
 # ── Naver 뉴스 API ───────────────────────────────────────────────────────────
@@ -260,17 +203,18 @@ def save_to_mongodb(date, date_korean, vol, rate):
 # ── 메인 ─────────────────────────────────────────────────────────────────────
 
 def main():
-    path = sys.argv[1] if len(sys.argv) > 1 else find_excel()
-    print(f'파일: {path}')
-
-    date = extract_date(path)
+    date = datetime.now().strftime('%Y-%m-%d')
     date_korean = format_date_korean(date)
     print(f'날짜: {date_korean}')
 
-    xl = pd.ExcelFile(path)
-    vol  = norm_vol(parse_sheet(xl, '거래대금'))
-    rate = norm_rate(parse_sheet(xl, '등락'))
-    print(f'거래대금 {len(vol)}개, 등락률 {len(rate)}개 종목 파싱 완료')
+    print('FinanceDataReader로 전종목 시세 수집 중...')
+    df = fetch_market_data()
+    print(f'전종목 {len(df)}개 수집 완료')
+
+    prev_ranks = get_previous_vol_ranks(date)
+    vol  = build_vol_list(df, prev_ranks)
+    rate = build_rate_list(df)
+    print(f'거래대금 상위 {len(vol)}개, 등락률 상위 {len(rate)}개 종목 산출 완료')
 
     # MongoDB에 종목 데이터 저장 (웹앱 자동 로드용)
     save_to_mongodb(date, date_korean, vol, rate)
