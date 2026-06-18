@@ -423,6 +423,9 @@ tbody td:nth-child(2) { text-align: left; font-weight: 600; }
 .modal-summary { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; }
 .modal-price { font-size: 22px; font-weight: 700; color: var(--c-heading); }
 .modal-state { font-size: 12px; color: var(--c-muted); text-align: center; padding: 30px 0; }
+.candle-legend { display: flex; gap: 14px; margin-bottom: 6px; }
+.candle-legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--c-muted); }
+.candle-legend-item i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .candle-chart { width: 100%; height: 220px; }
 .candle-info {
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;

@@ -217,10 +217,13 @@ def get_toss_token():
     r.raise_for_status()
     return r.json()['access_token']
 
+CANDLE_COUNT = 85  # 화면에는 60개만 표시하지만, 20일선이 맨 왼쪽 캔들까지 끊김 없이 그려지려면
+                    # 19거래일치 선행 데이터가 더 필요해 여유를 두고 85개를 가져온다.
+
 def fetch_candles(token, code, date_str):
     before = f'{date_str}T16:00:00+09:00'
     r = requests.get(f'{TOSS_BASE}/api/v1/candles', params={
-        'symbol': code, 'interval': '1d', 'count': 60, 'before': before,
+        'symbol': code, 'interval': '1d', 'count': CANDLE_COUNT, 'before': before,
     }, headers={'Authorization': f'Bearer {token}'}, timeout=10)
     r.raise_for_status()
     return r.json()['result']['candles']
