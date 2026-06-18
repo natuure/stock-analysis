@@ -1,0 +1,108 @@
+# 데이터 파이프라인 — Python 스크립트·수집 로직·데이터 구조
+
+## Python 스크립트
+
+### 뉴스분석.py
+```bash
+python 뉴스분석.py   # 장마감 후 실행. 오늘 날짜 기준 KRX 전종목 자동 수집
+```
+- FinanceDataReader(`fdr.StockListing('KRX')`)로 전종목 시세 1회 호출 (KONEX 제외)
+- 거래대금 상위 50 / 등락률 상위 50(거래대금 300억↑ 대상) 산출
+- 코스피·코스닥 지수 종가/등락률도 같이 수집 (`fetch_indices()`, `fdr.DataReader('KS11'|'KQ11')`)
+- MongoDB `stock_data` 컬렉션에 저장 (웹앱 달력 초록 점 자동 표시)
+- 거래대금+등락률 종목(최대 100개)의 토스증권 일봉 캔들 85개를 미리 조회해 MongoDB `candles`에 캐싱
+  (토스 API는 IP 허용 목록 기반이라 고정 IP인 로컬에서만 호출, Vercel은 직접 호출하지 않음)
+- `분석결과/뉴스데이터_YYYYMMDD.json` 생성
+- Naver 뉴스 쿼리: `{name} 특징주`, `{name} 급등 이유`, `{name} 상승 배경` 등 8개
+- 날짜 기준 검색: 파일날짜 ~ 오늘 (3일 이상 지난 경우 파일날짜+3일로 제한)
+- 당일 기사 우선 정렬
+
+### 저장분석.py
+```bash
+python 저장분석.py                              # 분석결과/ 최신 분석결과_*.json 자동 탐색
+python 저장분석.py "분석결과/분석결과_2026-06-17.json"  # 파일 직접 지정
+```
+- Claude Code가 생성한 분석 JSON을 MongoDB `ai_analysis`에 저장
+
+---
+
+## 데이터 수집 (FinanceDataReader)
+
+`fdr.StockListing('KRX')` 1회 호출로 KRX 전종목(KOSPI/KOSDAQ, KONEX 제외)의
+`Code, Name, Market, Close, Changes, ChagesRatio, Volume, Amount, Marcap`을 가져옴.
+- **거래대금 상위 50**: `Amount` 내림차순
+- **등락률 상위 50**: `Amount >= 300억` 필터 후 `ChagesRatio` 내림차순
+- **상한가 판정**: `changeRate >= 29.5` (`isUpperLimit: true`)
+- **전일 순위(prevRank)**: MongoDB에서 직전 거래일 `stock_data` 문서를 조회해 종목코드로 매칭 (없으면 NEW)
+- **체결강도**: FDR로 계산 불가하여 컬럼 자체 제거됨 (HTS 엑셀 시절에는 있었음)
+
+> ⚠️ **알려진 한계 — NXT(대체거래소) 거래량 포함 여부 미확인**: 거래대금/등락률 산출에 쓰는
+> FDR `StockListing('KRX')`가 NXT에서 체결된 거래량·거래대금까지 합산하는지 공개 자료로
+> 확정하지 못했다 (2026-06-19 조사). NXT 공식 사이트는 종목별 일별거래현황 조회 화면은
+> 있으나 무료 다운로드/API가 없고, 진짜 데이터 접근은 유료 "정보이용사" 전용 서비스로 보임.
+> 따라서 지금은 고치지 않고 기록만 남김 — NXT가 공개 API/다운로드를 제공하면 재검토.
+
+### 토스증권 캔들 캐싱
+- `fetch_candles(token, code, date_str)`로 종목당 1회, `interval=1d&count=85` 조회 (`before` 커서로 해당 날짜 지정)
+- 85개를 가져오는 이유: 차트엔 최근 60거래일만 표시하지만, 20일선이 표시 구간 맨 왼쪽까지 끊김 없이
+  그려지려면 19거래일치 선행 데이터가 더 필요해서 (`StockDetailModal.jsx`의 `VISIBLE_COUNT=60` 참고)
+- Rate Limit(burst 5, 초당 1개 충전) 대비 종목당 1.1초 슬립
+
+### 코스피·코스닥 지수 수집
+- `fetch_indices()`: 최근 7일 범위로 `KS11`(코스피)/`KQ11`(코스닥)을 조회해 마지막 두 행의 `Close`로
+  `close`, `change(포인트)`, `changeRate(%)`를 직접 계산 (FDR이 포인트 변동을 안 주므로 직접 차감)
+- 과거 날짜 백필 시엔 `end`를 해당 날짜로 고정한 별도 호출 필요 (스크립트엔 "오늘" 전용 버전만 있음 — 과거 날짜 백필은 1회성으로 직접 작성해 실행함, 2026-06-19 기준 6/15~18 백필 완료)
+
+---
+
+## 데이터 구조 (JavaScript / Python 공통)
+
+**vol 항목:**
+```javascript
+{ rank, prevRank, code, name, price, change, changeRate, volume, marketCap, tradingVolume }
+// prevRank: null = 신규, sector 필드 없음 (WICS 제거됨)
+```
+
+**rate 항목:**
+```javascript
+{ rank, code, name, price, change, changeRate, isUpperLimit, volume }
+// contractStrength 필드 제거됨 (FDR 전환 시 더 이상 제공 불가)
+```
+
+**indices 필드** (stock_data 문서에 같이 저장됨):
+```javascript
+{ kospi: { close, change, changeRate }, kosdaq: { close, change, changeRate } }
+// change = 포인트 변동(부호 포함), changeRate = %
+```
+
+**localStorage 구조:**
+```
+analysis_dates       → JSON 배열 ["2026-06-17", ...]
+analysis_YYYY-MM-DD  → JSON { vol:[...], rate:[...], date:"...", indices:{...}, _v: CACHE_VERSION }
+```
+
+> ⚠️ **stock_data 스키마를 바꿀 때마다 `src/utils.js`의 `CACHE_VERSION`을 올려야 한다.**
+> 캐시에 `_v`가 같이 저장되고, `App.jsx`의 `loadAnalysis()`가 `_v !== CACHE_VERSION`이면
+> localStorage를 무시하고 `/api/getData`에서 새로 받아온다. 안 올리면 이미 캐싱된 날짜는
+> 새 필드(예: indices)가 영원히 안 보이는 버그가 생긴다 (2026-06-18 실제로 겪은 버그).
+
+---
+
+## AI 분석 JSON 형식 (Claude Code 생성)
+
+```json
+{
+  "date": "2026-06-17",
+  "analysis": {
+    "테마": [
+      { "테마": "반도체/AI", "주요종목": "SK하이닉스(+5%), SK스퀘어(+6%)", "핵심재료": "250만닉스 달성, GAM 슈퍼사이클" }
+    ],
+    "거래대금": [
+      { "종목명": "SK하이닉스", "한줄요약": "...", "상승원인": "...", "트리거": "...", "테마섹터": "반도체/HBM/AI인프라" }
+    ],
+    "등락률": [
+      { "종목명": "한솔테크닉스", "한줄요약": "...", "상승원인": "...", "트리거": "...", "테마섹터": "전선/전력인프라" }
+    ]
+  }
+}
+```

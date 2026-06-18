@@ -1,0 +1,78 @@
+# 프론트엔드 — 화면 구성·컴포넌트·스타일
+
+## 화면 구성 (현재, 위에서 아래 순서)
+
+### Header.jsx
+- 제목 + 현재 보고 있는 날짜 표시
+
+### Calendar.jsx
+- localStorage `analysis_dates` + MongoDB `serverDates` 합쳐서 초록 점 표시
+- 날짜 클릭 → localStorage 우선(단, `_v === CACHE_VERSION`일 때만, [DATA_PIPELINE.md](DATA_PIPELINE.md) 참고),
+  없으면 MongoDB에서 로드 후 localStorage 캐시
+- 주간(W##) 클릭 → 주간 요약 표시
+
+### IndexSummary.jsx
+- 달력 바로 아래, "오늘의 코스피/코스닥" 제목 + 2칸 그리드
+- 각 칸: 라벨 → 큰 종가 → 변동 줄(`+199.60 (2.25%)` 형식, 상승 빨강/하락 파랑)
+- `indices`가 없는 날짜(옛 데이터)는 아무것도 렌더링 안 함
+
+### Cards.jsx — 2개 카드 그룹
+- 거래대금/시가총액 TOP 5
+- 전일 대비 순위 상승 TOP 5
+- 상한가 종목
+> WICS 업종 분포 카드 제거됨 ([HISTORY.md](HISTORY.md) 참고)
+
+### Analysis.jsx — 3개 섹션
+1. **핫한 테마** (ThemeTable)
+   - 표 컬럼 순서: 테마 태그 | 핵심 재료 | 주요 종목 (전체 가운데 정렬)
+   - `aiAnalysis.테마` 배열에서 렌더링
+2. **주요 뉴스** (AiPanels)
+   - 좌측 패널: 거래대금 상위 / 우측 패널: 등락률 상위
+   - 모바일: 거래대금/등락률 탭 전환
+   - 각 종목 카드: 종목명 + 테마 태그, 요약·원인·트리거 라벨 후 내용 다음 줄
+3. **분석 결과** (N파일 업로드 시, 현재 미사용)
+
+### Tables.jsx
+- 거래대금·등락률 탭 전환 (모바일)
+- 컬럼 클릭 정렬 (asc/desc)
+- **거래대금 컬럼**: 순위 | 종목명 | 현재가 | 등락률 | 거래량 | 거래대금
+- **등락률 컬럼**: 순위 | 종목명 | 현재가 | 등락률 | 거래량
+- 상한가 행: `limit-up` 클래스 (연한 빨강 배경)
+- 행 클릭 → `onRowClick` → `StockDetailModal` 오픈
+
+### StockDetailModal.jsx
+- 거래대금·등락률 표의 종목 행 클릭 시 오버레이 모달로 표시
+- `/api/tossQuote?symbol=&date=`로 일봉 캔들 조회 → SVG 캔들차트 직접 렌더링 (차트 라이브러리 미사용)
+- **5일선·20일선 이동평균선** 같이 표시 (`CandleChart`의 `MA_LINES` 상수, 색상: 5일 주황 `#f6b93b`, 20일 보라 `#9b59b6`)
+  - 표시 구간(60일) 양 끝까지 끊김 없이 그려지도록, 캐싱된 85개 캔들 중 앞 25개는 MA 계산에만 쓰고 차트엔 안 그림
+- 선택일 시가·고가·저가·거래량 텍스트 요약 포함
+
+---
+
+## 요약 카드 로직 (Cards.jsx)
+
+| 카드 | 데이터 | 로직 |
+|------|--------|------|
+| 거래대금/시가총액 TOP5 | vol | tradingVolume / marketCap 정렬 |
+| 전일 대비 순위 상승 TOP5 | vol | prevRank - rank 정렬, null → NEW 배지 |
+| 상한가 종목 | rate | isUpperLimit === true |
+
+---
+
+## Toss 디자인 토큰
+
+```css
+--c-primary:   #3182f6;
+--c-up:        #f04452;
+--c-down:      #3182f6;
+--c-success:   #03b26c;
+--c-limit-bg:  #fff0f1;
+```
+
+---
+
+## 반응형
+
+- 767px 이하: 1열, 탭 전환
+- 768~1023px: 2열
+- 1024px 이상: 3+2 그리드
