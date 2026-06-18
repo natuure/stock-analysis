@@ -10,16 +10,16 @@ function ThemeTable({ themes }) {
           <thead>
             <tr>
               <th>테마</th>
-              <th>주요 종목</th>
               <th>핵심 재료</th>
+              <th>주요 종목</th>
             </tr>
           </thead>
           <tbody>
             {themes.map((row, i) => (
               <tr key={i}>
                 <td><span className="theme-tag">{row.테마}</span></td>
-                <td>{row.주요종목}</td>
                 <td className="theme-material">{row.핵심재료}</td>
+                <td>{row.주요종목}</td>
               </tr>
             ))}
           </tbody>
