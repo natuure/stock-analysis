@@ -10,7 +10,13 @@ async function getDb() {
 }
 
 const KIS_BASE = 'https://openapi.koreainvestment.com:9443';
-const CANDLE_COUNT = 85; // 화면 60개 표시 + 20일선이 맨 왼쪽까지 끊김 없이 그려지는 데 필요한 선행 19일치
+
+// count: 화면 표시분 + 이동평균선이 맨 왼쪽까지 끊김 없이 그려지는 데 필요한 선행 데이터 포함
+// lookbackDays: FID_INPUT_DATE_1 계산용 여유 캘린더일 (주말·휴장일 감안)
+const PERIOD_CONFIG = {
+  D: { count: 85, lookbackDays: 135 },
+  W: { count: 75, lookbackDays: 540 },
+};
 
 async function getKisToken(db) {
   const tokenCol = db.collection('kis_token');
@@ -47,13 +53,14 @@ function ymd(dateStr, offsetDays) {
   return `${dt.getUTCFullYear()}${String(dt.getUTCMonth() + 1).padStart(2, '0')}${String(dt.getUTCDate()).padStart(2, '0')}`;
 }
 
-async function fetchKisCandles(token, code, dateStr) {
+async function fetchKisCandles(token, code, dateStr, period) {
+  const { count, lookbackDays } = PERIOD_CONFIG[period];
   const url = new URL(`${KIS_BASE}/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice`);
   url.searchParams.set('FID_COND_MRKT_DIV_CODE', 'J');
   url.searchParams.set('FID_INPUT_ISCD', code);
-  url.searchParams.set('FID_INPUT_DATE_1', ymd(dateStr, -135)); // 85거래일 확보용 여유 캘린더일
+  url.searchParams.set('FID_INPUT_DATE_1', ymd(dateStr, -lookbackDays));
   url.searchParams.set('FID_INPUT_DATE_2', ymd(dateStr, 0));
-  url.searchParams.set('FID_PERIOD_DIV_CODE', 'D');
+  url.searchParams.set('FID_PERIOD_DIV_CODE', period);
   url.searchParams.set('FID_ORG_ADJ_PRC', '0');
 
   const r = await fetch(url, {
@@ -80,7 +87,7 @@ async function fetchKisCandles(token, code, dateStr) {
       volume: row.acml_vol,
     }))
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
-    .slice(0, CANDLE_COUNT);
+    .slice(0, count);
 }
 
 module.exports = async (req, res) => {
@@ -92,16 +99,20 @@ module.exports = async (req, res) => {
 
   const { symbol, date } = req.query;
   if (!symbol || !date) return res.status(400).json({ error: 'symbol, date 파라미터 필요' });
+  const period = PERIOD_CONFIG[req.query.period] ? req.query.period : 'D';
 
   const db = await getDb();
 
   try {
     const token = await getKisToken(db);
-    const candles = await fetchKisCandles(token, symbol, date);
+    const candles = await fetchKisCandles(token, symbol, date, period);
     if (candles.length) return res.json({ candles });
   } catch (e) {
-    console.error('[KIS 캔들 조회 실패 — 토스 캐시로 폴백]', e.message);
+    console.error('[KIS 캔들 조회 실패]', e.message);
   }
+
+  // 토스 캐시는 일봉만 보관하므로 주봉 등 다른 주기는 폴백 대상이 아님
+  if (period !== 'D') return res.json({ candles: [] });
 
   try {
     const doc = await db.collection('candles').findOne({ _id: `${symbol}_${date}` });
