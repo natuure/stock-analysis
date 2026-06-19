@@ -8,6 +8,6 @@
     "api/analyzeStocks.js": { "maxDuration": 60 },
     "api/getAnalysis.js":   { "maxDuration": 10 },
     "api/getData.js":       { "maxDuration": 10 },
-    "api/tossQuote.js":     { "maxDuration": 10 }
+    "api/candles.js":       { "maxDuration": 10 }
   }
 }
