@@ -4,8 +4,10 @@
 매일 장마감 후 **Python 스크립트**가 FinanceDataReader로 KRX 전종목 시세를 자동 수집해
 MongoDB에 저장 → 웹앱 달력에서 날짜 클릭 시 데이터·AI 분석 결과 자동 표시.
 HTS 엑셀 수동 업로드 단계 없이 Python 스크립트 + MongoDB 기반으로 완전 자동화됨.
-종목 클릭 시 KIS(한국투자증권) Open API로 일봉 캔들 차트(이동평균선 포함)를 실시간 조회.
-KIS 장애 시에만 토스증권 캔들 캐시로 폴백.
+종목 클릭 시 KIS(한국투자증권) Open API로 일봉·주봉 차트(이동평균선 포함)를 실시간 조회.
+KIS 장애 시에만 토스증권 캔들 캐시(일봉만)로 폴백. 차트는 캔들이 아니라 OHLC 바 모양으로 표시됨.
+화면 상단에는 탭 3개(거래대금·등락률 분석 / 종목 분석 / 조건 검색)가 있고, 종목 분석·조건 검색은
+아직 내용 미정인 "준비 중" placeholder 상태.
 
 이 파일은 목차 역할만 한다 — 세부 내용은 아래 표에서 안내하는 파일을 직접 열어서 참고할 것.
 
@@ -55,6 +57,11 @@ python 저장분석.py → MongoDB ai_analysis 컬렉션 저장
 - **체결강도 컬럼이 안 보임** → 의도된 동작. FDR 전환 시 제거됨 ([HISTORY.md](HISTORY.md)).
 - **종목 클릭 캔들차트가 일부 종목만 보임** → 옛 동작이었음. KIS 전환(2026-06-20) 이후 해소됨 —
   이제 아무 종목이나 KIS로 실시간 조회됨 ([DATA_PIPELINE.md](DATA_PIPELINE.md)).
+- **종목 클릭 차트가 캔들이 아니라 막대(바차트) 모양** → 의도된 동작(2026-06-20 변경, 사용자 요청).
+  양봉 검정·음봉 빨강이며 전역 상승/하락 색(`--c-up`/`--c-down`)과는 무관한 차트 전용 색상.
+  컴포넌트명(`CandleChart`)·클래스명은 그대로 유지됨 ([FRONTEND.md](FRONTEND.md)).
+- **"종목 분석"/"조건 검색" 탭이 비어있음** → 의도된 동작. 아직 내용 미정, 탭 구조만 만들어둔
+  상태 ([FRONTEND.md](FRONTEND.md)).
 - **MongoDB 스키마를 바꿨는데 화면에 안 보임** → `src/utils.js`의 `CACHE_VERSION`을 올렸는지 확인
   (안 올리면 옛 localStorage 캐시가 새 필드를 영원히 안 가져옴, [DATA_PIPELINE.md](DATA_PIPELINE.md)).
 - **로컬에서 `npm run dev`/`npm run build`가 이상하게 실패함** → [DEV.md](DEV.md)의 Google Drive 우회 방법 사용.
