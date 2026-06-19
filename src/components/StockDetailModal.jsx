@@ -2,9 +2,15 @@ import { useState, useEffect } from 'react';
 import { fmtN, rc } from '../utils';
 
 const VISIBLE_COUNT = 60;
-const MA_LINES = [
-  { period: 5,  color: '#f6b93b', label: '5일선' },
-  { period: 20, color: '#9b59b6', label: '20일선' },
+const PERIOD_TABS = [
+  { key: 'D', label: '일봉', maLines: [
+    { period: 5,  color: '#f6b93b', label: '5일선' },
+    { period: 20, color: '#9b59b6', label: '20일선' },
+  ] },
+  { key: 'W', label: '주봉', maLines: [
+    { period: 5,  color: '#f6b93b', label: '5주선' },
+    { period: 10, color: '#9b59b6', label: '10주선' },
+  ] },
 ];
 
 function sma(values, period) {
@@ -16,12 +22,12 @@ function sma(values, period) {
   });
 }
 
-function CandleChart({ candles }) {
+function CandleChart({ candles, maLines }) {
   const full = [...candles].reverse(); // 오래된 → 최신 순 (MA 계산용 선행 데이터 포함)
   const visible = full.slice(-VISIBLE_COUNT);
   const offset = full.length - visible.length;
   const closes = full.map(c => parseFloat(c.closePrice));
-  const maSeries = MA_LINES.map(line => ({ ...line, values: sma(closes, line.period).slice(offset) }));
+  const maSeries = maLines.map(line => ({ ...line, values: sma(closes, line.period).slice(offset) }));
 
   const W = 600, H = 220, PAD = 10;
   const highs = visible.map(c => parseFloat(c.highPrice));
@@ -67,21 +73,29 @@ function CandleChart({ candles }) {
 export default function StockDetailModal({ open, code, name, dateISO, onClose }) {
   const [candles, setCandles] = useState(null);
   const [error,   setError]   = useState(null);
+  const [period,  setPeriod]  = useState('D');
+
+  useEffect(() => {
+    if (!open || !code) return;
+    setPeriod('D'); // 종목이 바뀌면 일봉으로 초기화 (이미 'D'면 상태 변화 없어 재요청 없음)
+  }, [open, code]);
 
   useEffect(() => {
     if (!open || !code) return;
     setCandles(null);
     setError(null);
-    fetch(`/api/candles?symbol=${code}&date=${dateISO}`)
+    fetch(`/api/candles?symbol=${code}&date=${dateISO}&period=${period}`)
       .then(r => r.json())
       .then(data => {
         if (data.error) throw new Error(data.error);
         setCandles(data.candles || []);
       })
       .catch(e => setError(e.message));
-  }, [open, code, dateISO]);
+  }, [open, code, dateISO, period]);
 
   if (!open) return null;
+
+  const activeTab = PERIOD_TABS.find(t => t.key === period);
 
   const last = candles && candles[0];
   const prevClose = candles && candles[1] ? parseFloat(candles[1].closePrice) : null;
@@ -95,6 +109,15 @@ export default function StockDetailModal({ open, code, name, dateISO, onClose })
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
+          <div className="period-tabs">
+            {PERIOD_TABS.map(tab => (
+              <button
+                key={tab.key}
+                className={`period-tab${period === tab.key ? ' active' : ''}`}
+                onClick={() => setPeriod(tab.key)}
+              >{tab.label}</button>
+            ))}
+          </div>
           {error && <div className="modal-state">차트를 불러오지 못했습니다 ({error})</div>}
           {!error && !candles && <div className="modal-state">불러오는 중...</div>}
           {!error && candles && candles.length === 0 && <div className="modal-state">캔들 데이터가 없습니다</div>}
@@ -107,13 +130,13 @@ export default function StockDetailModal({ open, code, name, dateISO, onClose })
                 )}
               </div>
               <div className="candle-legend">
-                {MA_LINES.map(line => (
+                {activeTab.maLines.map(line => (
                   <span className="candle-legend-item" key={line.period}>
                     <i style={{ background: line.color }} />{line.label}
                   </span>
                 ))}
               </div>
-              <CandleChart candles={candles} />
+              <CandleChart candles={candles} maLines={activeTab.maLines} />
               <div className="candle-info">
                 <div>시가<b>{fmtN(last.openPrice)}</b></div>
                 <div>고가<b>{fmtN(last.highPrice)}</b></div>
