@@ -4,11 +4,11 @@ import { fmtN, rc } from '../utils';
 const VISIBLE_COUNT = 60;
 const PERIOD_TABS = [
   { key: 'D', label: '일봉', maLines: [
-    { period: 5,  color: '#f6b93b', label: '5일선' },
+    { period: 5,  color: '#3182f6', label: '5일선' },
     { period: 20, color: '#9b59b6', label: '20일선' },
   ] },
   { key: 'W', label: '주봉', maLines: [
-    { period: 5,  color: '#f6b93b', label: '5주선' },
+    { period: 5,  color: '#3182f6', label: '5주선' },
     { period: 10, color: '#9b59b6', label: '10주선' },
   ] },
 ];
@@ -21,6 +21,9 @@ function sma(values, period) {
     return sum / period;
   });
 }
+
+const BAR_UP = '#000000';   // 양봉
+const BAR_DOWN = '#f04452'; // 음봉
 
 function CandleChart({ candles, maLines }) {
   const full = [...candles].reverse(); // 오래된 → 최신 순 (MA 계산용 선행 데이터 포함)
@@ -46,14 +49,13 @@ function CandleChart({ candles, maLines }) {
         const o = parseFloat(c.openPrice), h = parseFloat(c.highPrice);
         const l = parseFloat(c.lowPrice), cl = parseFloat(c.closePrice);
         const up = cl >= o;
-        const color = up ? 'var(--c-up)' : 'var(--c-down)';
-        const bodyTop = y(Math.max(o, cl));
-        const bodyBot = y(Math.min(o, cl));
-        const bodyH = Math.max(bodyBot - bodyTop, 1);
+        const color = up ? BAR_UP : BAR_DOWN;
+        const tick = colW * 0.3;
         return (
           <g key={c.timestamp}>
-            <line x1={cx(i)} x2={cx(i)} y1={y(h)} y2={y(l)} style={{ stroke: color }} strokeWidth="1" />
-            <rect x={cx(i) - colW * 0.3} y={bodyTop} width={colW * 0.6} height={bodyH} style={{ fill: color }} />
+            <line x1={cx(i)} x2={cx(i)} y1={y(h)} y2={y(l)} style={{ stroke: color }} strokeWidth="1.4" />
+            <line x1={cx(i) - tick} x2={cx(i)} y1={y(o)} y2={y(o)} style={{ stroke: color }} strokeWidth="1.4" />
+            <line x1={cx(i)} x2={cx(i) + tick} y1={y(cl)} y2={y(cl)} style={{ stroke: color }} strokeWidth="1.4" />
           </g>
         );
       })}
