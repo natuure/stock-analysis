@@ -72,7 +72,7 @@ export default function StockDetailModal({ open, code, name, dateISO, onClose })
     if (!open || !code) return;
     setCandles(null);
     setError(null);
-    fetch(`/api/tossQuote?symbol=${code}&date=${dateISO}`)
+    fetch(`/api/candles?symbol=${code}&date=${dateISO}`)
       .then(r => r.json())
       .then(data => {
         if (data.error) throw new Error(data.error);

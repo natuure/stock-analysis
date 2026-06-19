@@ -8,22 +8,23 @@ Frontend (React + Vite → Vercel)     Backend (Vercel Serverless)     DB
 src/                                 api/getData.js                  MongoDB Atlas
   App.jsx                              stock_data 조회 (날짜별)        stock_data 컬렉션
   components/                        api/getAnalysis.js                _id = "YYYY-MM-DD"
-    Header, Calendar                   ai_analysis 조회                vol, rate, date
-    Cards, Tables, Analysis          api/analyzeStocks.js            ai_analysis 컬렉션
-    StockDetailModal                   Claude API 프록시 (미사용)       _id = "YYYY-MM-DD"
-  utils.js                           api/tossQuote.js                 candles 컬렉션 (토스 캔들 캐시)
-  styles.css                           candles 컬렉션 조회만 함          _id = "종목코드_YYYY-MM-DD"
-                                        (토스 API 직접 호출 안 함)        candles: [...]
+    Header, Calendar                   ai_analysis 조회                ai_analysis 컬렉션
+    Cards, Tables, Analysis          api/analyzeStocks.js               _id = "YYYY-MM-DD"
+    StockDetailModal                   Claude API 프록시 (미사용)       candles 컬렉션 (토스 캔들 캐시·폴백용)
+  utils.js                           api/candles.js                     _id = "종목코드_YYYY-MM-DD"
+  styles.css                           KIS Open API 직접 호출(실시간)   kis_token 컬렉션 (KIS 접근토큰 캐시)
+                                        → 실패 시에만 candles 캐시 폴백   _id = "token"
 
 Python (로컬 실행, 고정 IP)
-  뉴스분석.py   ← FinanceDataReader 수집 + 토스 캔들 캐싱 + Naver 뉴스 수집 + stock_data 저장
+  뉴스분석.py   ← FinanceDataReader 수집 + 토스 캔들 캐싱(폴백용) + Naver 뉴스 수집 + stock_data 저장
   저장분석.py   ← ai_analysis 저장
 ```
 
 - **GitHub 저장소**: https://github.com/natuure/stock-analysis.git
 - **Vercel 자동 배포**: master 브랜치 push → 자동 빌드·배포
-- **Vercel 환경변수**: `MONGODB_URI`, `ANTHROPIC_API_KEY`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`
+- **Vercel 환경변수**: `MONGODB_URI`, `ANTHROPIC_API_KEY`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`, `KIS_APP_KEY`, `KIS_APP_SECRET`
 - `TOSS_CLIENT_ID`/`TOSS_CLIENT_SECRET`는 **로컬 `.env.local`에만** 필요 (Vercel은 토스 API를 호출하지 않으므로 Vercel 환경변수 등록은 불필요, 등록해 둬도 무해함)
+- `KIS_APP_KEY`/`KIS_APP_SECRET`는 **로컬 + Vercel(Production·Preview) 모두 필요** — KIS는 IP 제한이 없어 `api/candles.js`가 Vercel에서 직접 호출함 (2026-06-20 확인)
 
 ---
 
@@ -35,7 +36,7 @@ Python (로컬 실행, 고정 IP)
 │   ├── getData.js           # GET ?date= → stock_data 조회 / 날짜 목록 반환
 │   ├── getAnalysis.js       # GET ?date= → ai_analysis 조회
 │   ├── analyzeStocks.js     # Claude API 프록시 (현재 미사용)
-│   └── tossQuote.js         # GET ?symbol=&date= → MongoDB candles 컬렉션 조회 (토스 API 직접 호출 안 함)
+│   └── candles.js           # GET ?symbol=&date= → KIS Open API 직접 호출(실시간), 실패 시 candles 캐시 폴백
 ├── src/
 │   ├── main.jsx
 │   ├── App.jsx              # 상태 관리 (selectedStock 추가 → StockDetailModal 연결)
@@ -71,7 +72,8 @@ Python (로컬 실행, 고정 IP)
 |--------|------|------|
 | `stock_data` | 일별 종목 데이터 | `{ _id: "YYYY-MM-DD", vol: [...], rate: [...], date: "2026년 6월 17일 (화)", indices: {...} }` |
 | `ai_analysis` | AI 분석 결과 | `{ _id: "YYYY-MM-DD", analysis: { 테마:[...], 거래대금:[...], 등락률:[...] } }` |
-| `candles` | 종목별 토스 일봉 캔들 캐시 | `{ _id: "종목코드_YYYY-MM-DD", candles: [...] }` (해당일 거래대금/등락률 상위 종목만) |
+| `candles` | 종목별 토스 일봉 캔들 캐시 (KIS 실패 시 폴백용) | `{ _id: "종목코드_YYYY-MM-DD", candles: [...] }` (해당일 거래대금/등락률 상위 종목만) |
+| `kis_token` | KIS 접근토큰 캐시 (1분당 1회 발급 제한 대응) | `{ _id: "token", accessToken, expiresAt }` 단일 문서 |
 
 > ⚠️ `wics_cache` 컬렉션은 삭제됨 (WICS 업종 분류 기능 제거)
 
@@ -84,7 +86,7 @@ Python (로컬 실행, 고정 IP)
 | `/api/getData` | GET | date 없음: 날짜 목록 반환 / date 있음: 해당일 vol+rate+indices 반환 |
 | `/api/getAnalysis` | GET | `?date=YYYY-MM-DD` → ai_analysis 반환 |
 | `/api/analyzeStocks` | POST | Claude API 프록시 (현재 미사용) |
-| `/api/tossQuote` | GET | `?symbol=&date=` → MongoDB `candles` 컬렉션에서 일봉 캔들 60개 조회 (토스 API 직접 호출 안 함) |
+| `/api/candles` | GET | `?symbol=&date=` → KIS Open API로 일봉 캔들 85개 실시간 조회. 실패 시에만 MongoDB `candles`(토스 캐시) 폴백 |
 
 ---
 
@@ -98,3 +100,5 @@ Python (로컬 실행, 고정 IP)
 | `NAVER_CLIENT_SECRET` | .env.local | Naver 검색 API (뉴스분석.py) |
 | `TOSS_CLIENT_ID` | .env.local | 토스증권 Open API OAuth2 (뉴스분석.py, IP 허용 목록 때문에 로컬에서만 사용) |
 | `TOSS_CLIENT_SECRET` | .env.local | 토스증권 Open API OAuth2 (뉴스분석.py, IP 허용 목록 때문에 로컬에서만 사용) |
+| `KIS_APP_KEY` | .env.local + Vercel | KIS(한국투자증권) Open API 인증 (api/candles.js, IP 제한 없어 Vercel에서 직접 호출) |
+| `KIS_APP_SECRET` | .env.local + Vercel | KIS(한국투자증권) Open API 인증 (api/candles.js, IP 제한 없어 Vercel에서 직접 호출) |
