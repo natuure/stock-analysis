@@ -11,7 +11,9 @@ python 뉴스분석.py   # 장마감 후 실행. 오늘 날짜 기준 KRX 전종
 - 코스피·코스닥 지수 종가/등락률도 같이 수집 (`fetch_indices()`, `fdr.DataReader('KS11'|'KQ11')`)
 - MongoDB `stock_data` 컬렉션에 저장 (웹앱 달력 초록 점 자동 표시)
 - 거래대금+등락률 종목(최대 100개)의 토스증권 일봉 캔들 85개를 미리 조회해 MongoDB `candles`에 캐싱
-  (토스 API는 IP 허용 목록 기반이라 고정 IP인 로컬에서만 호출, Vercel은 직접 호출하지 않음)
+  (토스 API는 IP 허용 목록 기반이라 고정 IP인 로컬에서만 호출, Vercel은 직접 호출하지 않음.
+  2026-06-20부터는 `api/candles.js`가 KIS를 우선 호출하므로, 이 캐싱은 KIS 장애 시에만 쓰이는
+  폴백 데이터가 됨 — 자세한 내용은 아래 "KIS 일별 캔들 조회(api/candles.js)" 참고)
 - `분석결과/뉴스데이터_YYYYMMDD.json` 생성
 - Naver 뉴스 쿼리: `{name} 특징주`, `{name} 급등 이유`, `{name} 상승 배경` 등 8개
 - 날짜 기준 검색: 파일날짜 ~ 오늘 (3일 이상 지난 경우 파일날짜+3일로 제한)
@@ -47,6 +49,24 @@ python 저장분석.py "분석결과/분석결과_2026-06-17.json"  # 파일 직
 - 85개를 가져오는 이유: 차트엔 최근 60거래일만 표시하지만, 20일선이 표시 구간 맨 왼쪽까지 끊김 없이
   그려지려면 19거래일치 선행 데이터가 더 필요해서 (`StockDetailModal.jsx`의 `VISIBLE_COUNT=60` 참고)
 - Rate Limit(burst 5, 초당 1개 충전) 대비 종목당 1.1초 슬립
+
+### KIS 일별 캔들 조회 (`api/candles.js`, 2026-06-20 도입)
+- 종목 클릭 시 Vercel이 **KIS(한국투자증권) Open API를 실시간으로 직접 호출**한다.
+  토스와 달리 KIS는 IP 허용 목록 제한이 없음을 확인했음 (Vercel 프리뷰 배포에서 토큰 발급·조회
+  성공으로 검증, 2026-06-20).
+- 엔드포인트: `GET /uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice`
+  (`tr_id: FHKST03010100`), 시작일~종료일 범위로 한 번에 최대 100개 일봉 반환.
+  `FID_INPUT_DATE_1`은 대상일 기준 135캘린더일 전(85거래일 확보용 여유), `FID_INPUT_DATE_2`는
+  대상일.
+- 접근토큰은 `/oauth2/tokenP`로 발급하며 **1분당 1회 발급 제한**이 있어 MongoDB `kis_token`
+  컬렉션에 캐싱 후 만료(`expires_in`, 보통 24시간) 전까지 재사용한다.
+- 응답(`output2`)의 `stck_bsop_date/stck_oprc/stck_hgpr/stck_lwpr/stck_clpr/acml_vol`을
+  프론트엔드가 기대하는 `{timestamp, openPrice, highPrice, lowPrice, closePrice, volume}` 형태로
+  변환하고, 날짜 내림차순(최신순)으로 정렬해 최근 85개만 잘라서 반환한다.
+- KIS 호출이 실패하면(네트워크 오류, 상장폐지 등) 그때만 기존 토스 캐시(`candles` 컬렉션)로
+  폴백한다 — 이 캐시는 위 "토스증권 캔들 캐싱" 절차로 여전히 매일 채워진다.
+- 이 전환으로 "그날 거래대금/등락률 상위 50에 든 종목만 캔들 조회 가능"하던 한계가 사실상
+  해소됨 (KIS는 캐싱 없이 아무 종목이나 즉시 조회 가능).
 
 ### 코스피·코스닥 지수 수집
 - `fetch_indices()`: 최근 7일 범위로 `KS11`(코스피)/`KQ11`(코스닥)을 조회해 마지막 두 행의 `Close`로
