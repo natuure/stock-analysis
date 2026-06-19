@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import Header from './components/Header';
+import TopTabs from './components/TopTabs';
 import Calendar from './components/Calendar';
 import Cards from './components/Cards';
 import IndexSummary from './components/IndexSummary';
@@ -26,6 +27,8 @@ export default function App() {
   const [sortV, setSortV] = useState({ col: 'rank', dir: 'asc' });
   const [sortR, setSortR] = useState({ col: 'rank', dir: 'asc' });
   const [tab,   setTab]   = useState('v');
+
+  const [topTab, setTopTab] = useState('main');
 
   const [aiAnalysis,  setAiAnalysis]  = useState(null);
   const [serverDates, setServerDates] = useState([]);
@@ -110,33 +113,44 @@ export default function App() {
 
   return (
     <div className="wrap">
-      <Header date={date} />
-      <Calendar
-        year={calYear} month={calMonth} selected={calSelected}
-        onMove={calMove}
-        onDayClick={loadAnalysis}
-        serverDates={serverDates}
-        onWeekClick={(weekKey) => {
-          const data = loadWeeklyFromStorage(weekKey);
-          if (data) setAnalysisExcel(data.rows);
-        }}
-      />
-      {showMain && (
-        <main>
-          <IndexSummary indices={indices} />
-          <Cards vol={vol} rate={rate} />
-          <Analysis analysisExcel={analysisExcel} aiAnalysis={aiAnalysis} />
-          <h2 className="sec-title" style={{ marginTop: 36 }}>종목 데이터</h2>
-          <Tables
-            vol={vol} rate={rate}
-            sortV={sortV} sortR={sortR}
-            tab={tab}
-            onSort={handleSort}
-            onTab={setTab}
-            onRowClick={setSelectedStock}
+      <div className="app-top">
+        <Header date={date} />
+        <TopTabs active={topTab} onChange={setTopTab} />
+      </div>
+
+      {topTab === 'main' && (
+        <>
+          <Calendar
+            year={calYear} month={calMonth} selected={calSelected}
+            onMove={calMove}
+            onDayClick={loadAnalysis}
+            serverDates={serverDates}
+            onWeekClick={(weekKey) => {
+              const data = loadWeeklyFromStorage(weekKey);
+              if (data) setAnalysisExcel(data.rows);
+            }}
           />
-        </main>
+          {showMain && (
+            <main>
+              <IndexSummary indices={indices} />
+              <Cards vol={vol} rate={rate} />
+              <Analysis analysisExcel={analysisExcel} aiAnalysis={aiAnalysis} />
+              <h2 className="sec-title" style={{ marginTop: 36 }}>종목 데이터</h2>
+              <Tables
+                vol={vol} rate={rate}
+                sortV={sortV} sortR={sortR}
+                tab={tab}
+                onSort={handleSort}
+                onTab={setTab}
+                onRowClick={setSelectedStock}
+              />
+            </main>
+          )}
+        </>
       )}
+      {topTab === 'stock'    && <div className="tab-placeholder">종목 분석 — 준비 중입니다</div>}
+      {topTab === 'screener' && <div className="tab-placeholder">조건 검색 — 준비 중입니다</div>}
+
       <StockDetailModal
         open={!!selectedStock}
         code={selectedStock?.code}
