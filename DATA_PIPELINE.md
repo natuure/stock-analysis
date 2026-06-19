@@ -50,21 +50,25 @@ python 저장분석.py "분석결과/분석결과_2026-06-17.json"  # 파일 직
   그려지려면 19거래일치 선행 데이터가 더 필요해서 (`StockDetailModal.jsx`의 `VISIBLE_COUNT=60` 참고)
 - Rate Limit(burst 5, 초당 1개 충전) 대비 종목당 1.1초 슬립
 
-### KIS 일별 캔들 조회 (`api/candles.js`, 2026-06-20 도입)
+### KIS 캔들 조회 — 일봉/주봉 (`api/candles.js`, 2026-06-20 도입, 주봉은 같은 날 추가)
 - 종목 클릭 시 Vercel이 **KIS(한국투자증권) Open API를 실시간으로 직접 호출**한다.
   토스와 달리 KIS는 IP 허용 목록 제한이 없음을 확인했음 (Vercel 프리뷰 배포에서 토큰 발급·조회
   성공으로 검증, 2026-06-20).
 - 엔드포인트: `GET /uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice`
-  (`tr_id: FHKST03010100`), 시작일~종료일 범위로 한 번에 최대 100개 일봉 반환.
-  `FID_INPUT_DATE_1`은 대상일 기준 135캘린더일 전(85거래일 확보용 여유), `FID_INPUT_DATE_2`는
-  대상일.
+  (`tr_id: FHKST03010100`), 시작일~종료일 범위로 한 번에 최대 100개 캔들 반환. 같은 엔드포인트를
+  `FID_PERIOD_DIV_CODE`로 일봉(`D`)/주봉(`W`) 전환해서 재사용한다.
+- 프론트엔드가 보내는 `?period=D|W` 쿼리에 따라 `PERIOD_CONFIG`에서 조회 개수·범위를 다르게 잡음:
+  - `D`(일봉): 캔들 85개, `FID_INPUT_DATE_1`은 대상일 기준 135캘린더일 전(85거래일 확보용 여유)
+  - `W`(주봉): 캔들 75개, `FID_INPUT_DATE_1`은 대상일 기준 540캘린더일 전(75주 확보용 여유)
+  - 둘 다 `FID_INPUT_DATE_2`는 대상일
 - 접근토큰은 `/oauth2/tokenP`로 발급하며 **1분당 1회 발급 제한**이 있어 MongoDB `kis_token`
   컬렉션에 캐싱 후 만료(`expires_in`, 보통 24시간) 전까지 재사용한다.
 - 응답(`output2`)의 `stck_bsop_date/stck_oprc/stck_hgpr/stck_lwpr/stck_clpr/acml_vol`을
   프론트엔드가 기대하는 `{timestamp, openPrice, highPrice, lowPrice, closePrice, volume}` 형태로
-  변환하고, 날짜 내림차순(최신순)으로 정렬해 최근 85개만 잘라서 반환한다.
-- KIS 호출이 실패하면(네트워크 오류, 상장폐지 등) 그때만 기존 토스 캐시(`candles` 컬렉션)로
-  폴백한다 — 이 캐시는 위 "토스증권 캔들 캐싱" 절차로 여전히 매일 채워진다.
+  변환하고, 날짜 내림차순(최신순)으로 정렬해 `PERIOD_CONFIG`의 개수만큼 잘라서 반환한다.
+- KIS 호출이 실패하면(네트워크 오류, 상장폐지 등) **일봉(`D`)일 때만** 기존 토스 캐시(`candles`
+  컬렉션)로 폴백한다 — 이 캐시는 위 "토스증권 캔들 캐싱" 절차로 여전히 매일 채워지지만 일봉만
+  보관하므로, 주봉(`W`)은 KIS 실패 시 폴백 없이 빈 배열을 반환한다.
 - 이 전환으로 "그날 거래대금/등락률 상위 50에 든 종목만 캔들 조회 가능"하던 한계가 사실상
   해소됨 (KIS는 캐싱 없이 아무 종목이나 즉시 조회 가능).
 
