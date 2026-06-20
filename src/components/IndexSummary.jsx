@@ -16,11 +16,11 @@ function IndexBlock({ label, data }) {
   );
 }
 
-export default function IndexSummary({ indices }) {
+export default function IndexSummary({ indices, title = '오늘의 코스피/코스닥' }) {
   if (!indices) return null;
   return (
     <>
-      <h2 className="sec-title">오늘의 코스피/코스닥</h2>
+      <h2 className="sec-title">{title}</h2>
       <div className="index-grid">
         <IndexBlock label="코스피" data={indices.kospi} />
         <IndexBlock label="코스닥" data={indices.kosdaq} />

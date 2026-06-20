@@ -10,7 +10,7 @@ import StockDetailModal from './components/StockDetailModal';
 import {
   dateToISO, CACHE_VERSION,
   saveAnalysisToStorage, loadAnalysisFromStorage,
-  loadWeeklyFromStorage, weeklyChangeMap,
+  loadWeeklyFromStorage, weeklyIndexMap,
 } from './utils';
 
 export default function App() {
@@ -33,6 +33,7 @@ export default function App() {
   const [aiAnalysis,  setAiAnalysis]  = useState(null);
   const [serverDates, setServerDates] = useState([]);
   const [weeklyIdx,   setWeeklyIdx]   = useState({});
+  const [weekSelected, setWeekSelected] = useState(null);
   const [selectedStock, setSelectedStock] = useState(null);
 
   const volRef  = useRef(null);
@@ -52,8 +53,8 @@ export default function App() {
       fetch(`/api/candles?symbol=0001&date=${todayISO}&period=W&market=index`).then(r => r.json()),
       fetch(`/api/candles?symbol=1001&date=${todayISO}&period=W&market=index`).then(r => r.json()),
     ]).then(([kospiRes, kosdaqRes]) => {
-      const kospiMap  = weeklyChangeMap(kospiRes.candles  || []);
-      const kosdaqMap = weeklyChangeMap(kosdaqRes.candles || []);
+      const kospiMap  = weeklyIndexMap(kospiRes.candles  || []);
+      const kosdaqMap = weeklyIndexMap(kosdaqRes.candles || []);
       const merged = {};
       for (const k of new Set([...Object.keys(kospiMap), ...Object.keys(kosdaqMap)])) {
         merged[k] = { kospi: kospiMap[k], kosdaq: kosdaqMap[k] };
@@ -72,6 +73,7 @@ export default function App() {
   }
 
   function loadAnalysis(dateISO) {
+    setWeekSelected(null);
     const data = loadAnalysisFromStorage(dateISO);
     if (data && data._v === CACHE_VERSION) {
       volRef.current  = data.vol;
@@ -127,6 +129,8 @@ export default function App() {
   }
 
   const showMain = !!(vol && rate);
+  const weekIdx  = weekSelected ? weeklyIdx[weekSelected] : null;
+  const weekData = weekIdx && weekIdx.kospi && weekIdx.kosdaq ? weekIdx : null;
 
   return (
     <div className="wrap">
@@ -146,11 +150,18 @@ export default function App() {
             onWeekClick={(weekKey) => {
               const data = loadWeeklyFromStorage(weekKey);
               if (data) setAnalysisExcel(data.rows);
+              const idx = weeklyIdx[weekKey];
+              setWeekSelected(idx && idx.kospi && idx.kosdaq ? weekKey : null);
             }}
           />
+          {(weekData || (showMain && indices)) && (
+            <IndexSummary
+              indices={weekData || indices}
+              title={weekData ? '금주의 코스피/코스닥' : '오늘의 코스피/코스닥'}
+            />
+          )}
           {showMain && (
             <main>
-              <IndexSummary indices={indices} />
               <Cards vol={vol} rate={rate} />
               <Analysis analysisExcel={analysisExcel} aiAnalysis={aiAnalysis} />
               <h2 className="sec-title" style={{ marginTop: 36 }}>종목 데이터</h2>
