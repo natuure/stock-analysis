@@ -190,6 +190,24 @@ export function weekKeyFromDate(date) {
   return `${date.getFullYear()}-W${getISOWeek(date)}`;
 }
 
+function kisDateToObj(s) {
+  return new Date(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8));
+}
+
+// candles: api/candles.js 응답과 동일 형식([0]=최신 주 ... [n]=과거 주). 연속된 두 주봉의
+// 종가를 비교해 주차별 변동률(%) 맵을 만든다.
+export function weeklyChangeMap(candles) {
+  const map = {};
+  for (let i = 0; i < candles.length - 1; i++) {
+    const curClose  = parseFloat(candles[i].closePrice);
+    const prevClose = parseFloat(candles[i + 1].closePrice);
+    if (!curClose || !prevClose) continue;
+    const weekKey = weekKeyFromDate(kisDateToObj(candles[i].timestamp));
+    map[weekKey] = (curClose - prevClose) / prevClose * 100;
+  }
+  return map;
+}
+
 export function saveWeeklyToStorage(weekKey, rows) {
   lsSet(`weekly_${weekKey}`, JSON.stringify({ rows, weekKey }));
   const dates = JSON.parse(ls('weekly_dates') || '[]');

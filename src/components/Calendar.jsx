@@ -1,4 +1,4 @@
-import { ls } from '../utils';
+import { ls, rc } from '../utils';
 
 const DOWS   = ['일', '월', '화', '수', '목', '금', '토'];
 const MONTHS = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
@@ -11,7 +11,7 @@ function getISOWeek(date) {
   return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
 }
 
-export default function Calendar({ year, month, selected, onMove, onDayClick, onNoDataClick, onWeekClick, serverDates = [] }) {
+export default function Calendar({ year, month, selected, onMove, onDayClick, onNoDataClick, onWeekClick, serverDates = [], weeklyIdx = {} }) {
   const dates       = JSON.parse(ls('analysis_dates') || '[]');
   const weeklyDates = JSON.parse(ls('weekly_dates')   || '[]');
   const dateSet     = new Set([...dates, ...serverDates]);
@@ -74,6 +74,7 @@ export default function Calendar({ year, month, selected, onMove, onDayClick, on
           const weekNum  = getISOWeek(refDate);
           const weekKey  = `${refDate.getFullYear()}-W${weekNum}`;
           const hasWeekly = weeklySet.has(weekKey);
+          const idx = weeklyIdx[weekKey];
 
           return [
             <div className="cal-week-col" key={`wn-${wi}`}>
@@ -84,6 +85,20 @@ export default function Calendar({ year, month, selected, onMove, onDayClick, on
               >
                 W{weekNum}
               </span>
+              {idx && (idx.kospi != null || idx.kosdaq != null) && (
+                <div className="cal-week-idx">
+                  {idx.kospi != null && (
+                    <span className={`cal-week-idx-row ${rc(idx.kospi)}`}>
+                      {idx.kospi > 0 ? '▲' : idx.kospi < 0 ? '▼' : ''}{Math.abs(idx.kospi).toFixed(1)}%
+                    </span>
+                  )}
+                  {idx.kosdaq != null && (
+                    <span className={`cal-week-idx-row ${rc(idx.kosdaq)}`}>
+                      {idx.kosdaq > 0 ? '▲' : idx.kosdaq < 0 ? '▼' : ''}{Math.abs(idx.kosdaq).toFixed(1)}%
+                    </span>
+                  )}
+                </div>
+              )}
             </div>,
             ...week.map((day, di) => {
               if (day.other) return (

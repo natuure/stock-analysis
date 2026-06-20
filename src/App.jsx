@@ -10,7 +10,7 @@ import StockDetailModal from './components/StockDetailModal';
 import {
   dateToISO, CACHE_VERSION,
   saveAnalysisToStorage, loadAnalysisFromStorage,
-  loadWeeklyFromStorage,
+  loadWeeklyFromStorage, weeklyChangeMap,
 } from './utils';
 
 export default function App() {
@@ -32,6 +32,7 @@ export default function App() {
 
   const [aiAnalysis,  setAiAnalysis]  = useState(null);
   const [serverDates, setServerDates] = useState([]);
+  const [weeklyIdx,   setWeeklyIdx]   = useState({});
   const [selectedStock, setSelectedStock] = useState(null);
 
   const volRef  = useRef(null);
@@ -43,6 +44,22 @@ export default function App() {
       .then(r => r.json())
       .then(({ dates }) => { if (dates) setServerDates(dates); })
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const todayISO = new Date().toISOString().slice(0, 10);
+    Promise.all([
+      fetch(`/api/candles?symbol=0001&date=${todayISO}&period=W&market=index`).then(r => r.json()),
+      fetch(`/api/candles?symbol=1001&date=${todayISO}&period=W&market=index`).then(r => r.json()),
+    ]).then(([kospiRes, kosdaqRes]) => {
+      const kospiMap  = weeklyChangeMap(kospiRes.candles  || []);
+      const kosdaqMap = weeklyChangeMap(kosdaqRes.candles || []);
+      const merged = {};
+      for (const k of new Set([...Object.keys(kospiMap), ...Object.keys(kosdaqMap)])) {
+        merged[k] = { kospi: kospiMap[k], kosdaq: kosdaqMap[k] };
+      }
+      setWeeklyIdx(merged);
+    }).catch(() => {});
   }, []);
 
   async function fetchAiAnalysis(dateISO) {
@@ -125,6 +142,7 @@ export default function App() {
             onMove={calMove}
             onDayClick={loadAnalysis}
             serverDates={serverDates}
+            weeklyIdx={weeklyIdx}
             onWeekClick={(weekKey) => {
               const data = loadWeeklyFromStorage(weekKey);
               if (data) setAnalysisExcel(data.rows);
