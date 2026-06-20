@@ -1,4 +1,4 @@
-import { ls } from '../utils';
+import { ls, rc } from '../utils';
 
 const DOWS   = ['일', '월', '화', '수', '목', '금', '토'];
 const MONTHS = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
@@ -12,10 +12,8 @@ function getISOWeek(date) {
 }
 
 export default function Calendar({ year, month, selected, onMove, onDayClick, onNoDataClick, onWeekClick, serverDates = [], weeklyIdx = {} }) {
-  const dates       = JSON.parse(ls('analysis_dates') || '[]');
-  const weeklyDates = JSON.parse(ls('weekly_dates')   || '[]');
-  const dateSet     = new Set([...dates, ...serverDates]);
-  const weeklySet   = new Set(weeklyDates);
+  const dates   = JSON.parse(ls('analysis_dates') || '[]');
+  const dateSet = new Set([...dates, ...serverDates]);
 
   const today = new Date();
   const todayStr = [
@@ -61,8 +59,6 @@ export default function Calendar({ year, month, selected, onMove, onDayClick, on
         </div>
       </div>
       <div className="cal-grid">
-        {/* 헤더: 빈 셀(주차 컬럼) + 요일 */}
-        <div />
         {DOWS.map(d => <div className="cal-dow" key={d}>{d}</div>)}
 
         {/* 주 단위 렌더링 */}
@@ -71,40 +67,51 @@ export default function Calendar({ year, month, selected, onMove, onDayClick, on
           const refDate   = firstReal
             ? new Date(firstReal.iso)
             : new Date(year, month, week[0].d);
-          const weekNum  = getISOWeek(refDate);
-          const weekKey  = `${refDate.getFullYear()}-W${weekNum}`;
+          const weekNum = getISOWeek(refDate);
+          const weekKey = `${refDate.getFullYear()}-W${weekNum}`;
           const idx = weeklyIdx[weekKey];
           const hasIdx = !!(idx && idx.kospi && idx.kosdaq);
-          const clickable = weeklySet.has(weekKey) || hasIdx;
 
-          return [
-            <div className="cal-week-col" key={`wn-${wi}`}>
-              <span
-                className={`cal-week-label${clickable ? ' has-weekly' : ''}`}
-                onClick={clickable && onWeekClick ? () => onWeekClick(weekKey) : undefined}
-                style={{ cursor: clickable ? 'pointer' : 'default' }}
-              >
-                W{weekNum}
-              </span>
-            </div>,
-            ...week.map((day, di) => {
-              if (day.other) return (
-                <div className="cal-day-wrap" key={`${wi}-${di}`}>
-                  <div className="cal-day other-month">{day.d}</div>
-                </div>
-              );
-              let cls = 'cal-day';
-              if (day.isToday) cls += ' today';
-              if (day.hasData) cls += ' has-data';
-              if (day.isSel)   cls += ' selected';
-              const onClick = day.hasData ? () => onDayClick(day.iso) : onNoDataClick;
+          return week.map((day, di) => {
+            if (day.other) return (
+              <div className="cal-day-wrap" key={`${wi}-${di}`}>
+                <div className="cal-day other-month">{day.d}</div>
+              </div>
+            );
+
+            // 토요일(di===6) 칸에 그 주(월~금) 코스피/코스닥 변동률 표시
+            if (di === 6 && hasIdx) {
               return (
                 <div className="cal-day-wrap" key={`${wi}-${di}`}>
-                  <div className={cls} onClick={onClick}>{day.d}</div>
+                  <div
+                    className="cal-day cal-day-idx"
+                    onClick={onWeekClick ? () => onWeekClick(weekKey) : undefined}
+                  >
+                    <span className="cal-day-idx-date">{day.d}</span>
+                    <span className={`cal-day-idx-row ${rc(idx.kospi.changeRate)}`}>
+                      {idx.kospi.changeRate > 0 ? '▲' : idx.kospi.changeRate < 0 ? '▼' : ''}
+                      {Math.abs(idx.kospi.changeRate).toFixed(1)}%
+                    </span>
+                    <span className={`cal-day-idx-row ${rc(idx.kosdaq.changeRate)}`}>
+                      {idx.kosdaq.changeRate > 0 ? '▲' : idx.kosdaq.changeRate < 0 ? '▼' : ''}
+                      {Math.abs(idx.kosdaq.changeRate).toFixed(1)}%
+                    </span>
+                  </div>
                 </div>
               );
-            }),
-          ];
+            }
+
+            let cls = 'cal-day';
+            if (day.isToday) cls += ' today';
+            if (day.hasData) cls += ' has-data';
+            if (day.isSel)   cls += ' selected';
+            const onClick = day.hasData ? () => onDayClick(day.iso) : onNoDataClick;
+            return (
+              <div className="cal-day-wrap" key={`${wi}-${di}`}>
+                <div className={cls} onClick={onClick}>{day.d}</div>
+              </div>
+            );
+          });
         })}
       </div>
     </div>
