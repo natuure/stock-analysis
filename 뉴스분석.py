@@ -470,9 +470,10 @@ def cache_candles(vol, rate, date_str):
     client.close()
     print(f'캔들 캐싱 완료: {ok}개 성공, {fail}개 실패')
 
-    # 0%를 상한으로 클램프 — 토스 캔들은 KRX 단독이라 NXT 포함 현재가(KIS UN)보다 그날 고가가
-    # 낮게 잡혀 있을 수 있는데, 그런 데이터 소스 차이로 양수가 나오는 걸 막고 "현재가가 60일
-    # 신고가(이상)면 0%"를 항상 보장한다.
+    # 0%를 상한으로 클램프 — 토스 종가도 KIS UN(NXT 포함 통합가)과 일치함을 직접 확인했다
+    # (2026-06-21, 000660 2026-06-18 종가 2,699,000으로 대조 검증, FDR만 KRX 단독인 2,685,000).
+    # 그래도 두 데이터 소스(토스 vs KIS) 간 반영 시점 차이로 미세하게 어긋날 가능성에 대비해
+    # "현재가가 60일 신고가(이상)면 0%"를 항상 보장한다.
     for s in vol + rate:
         high60 = high60_map.get(s['code'])
         s['high60Rate'] = min(0.0, (s['price'] - high60) / high60 * 100) if high60 else None
