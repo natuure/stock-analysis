@@ -2,7 +2,6 @@ import { useState, useRef, useEffect } from 'react';
 import Header from './components/Header';
 import TopTabs from './components/TopTabs';
 import Calendar from './components/Calendar';
-import Cards from './components/Cards';
 import IndexSummary from './components/IndexSummary';
 import Analysis from './components/Analysis';
 import Tables from './components/Tables';
@@ -150,7 +149,6 @@ export default function App() {
           )}
           {showMain && (
             <main>
-              <Cards vol={vol} rate={rate} />
               <Analysis analysisExcel={analysisExcel} aiAnalysis={aiAnalysis} />
               <h2 className="sec-title" style={{ marginTop: 36 }}>종목 데이터</h2>
               <Tables

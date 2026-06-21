@@ -142,47 +142,17 @@ input  { font-family: inherit; outline: none; }
 
 /* ── Cards grid ───────────────────────────────────────────── */
 .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-.grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-top: 14px; }
 .index-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-top: 14px; }
 
 .card {
   background: var(--c-bg); border-radius: var(--r-md);
   padding: 18px 20px; box-shadow: var(--shadow-card);
 }
-.card-title {
-  font-size: 11px; font-weight: 700; color: var(--c-muted);
-  text-transform: uppercase; letter-spacing: .04em;
-  display: flex; align-items: center; gap: 5px; margin-bottom: 14px;
-}
-.card-title svg { width: 13px; height: 13px; }
 
 .index-card { text-align: center; }
 .index-label { font-size: 13px; font-weight: 700; color: var(--c-muted); margin-bottom: 8px; }
 .index-close { font-size: 26px; font-weight: 700; color: var(--c-heading); font-variant-numeric: tabular-nums; }
 .index-change { font-size: 14px; font-weight: 600; margin-top: 4px; font-variant-numeric: tabular-nums; }
-
-/* ── Rank list ────────────────────────────────────────────── */
-.rank-list { display: flex; flex-direction: column; gap: 9px; }
-.rank-item { display: flex; align-items: center; gap: 8px; }
-.rank-num  {
-  font-size: 11px; font-weight: 700; color: var(--c-muted);
-  width: 16px; text-align: center; flex-shrink: 0;
-}
-.rank-num.top { color: var(--c-primary); }
-.rank-name {
-  flex: 1; font-size: 13px; font-weight: 600; color: var(--c-heading);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.rank-val {
-  font-size: 13px; font-weight: 700; color: var(--c-primary);
-  font-variant-numeric: tabular-nums; flex-shrink: 0;
-}
-.badge {
-  font-size: 11px; font-weight: 700; padding: 2px 7px;
-  border-radius: var(--r-pill); flex-shrink: 0;
-}
-.badge-new { background: rgba(100,168,255,.15); color: var(--c-primary); }
-.badge-up  { background: #fff0f1; color: var(--c-up); }
 
 /* ── Sector bars ──────────────────────────────────────────── */
 .sec-list { display: flex; flex-direction: column; gap: 9px; }
@@ -197,19 +167,6 @@ input  { font-family: inherit; outline: none; }
   font-size: 13px; font-weight: 700; color: var(--c-heading);
   font-variant-numeric: tabular-nums; width: 20px; text-align: right;
 }
-
-/* ── Card D — Limit-up ────────────────────────────────────── */
-.limit-count {
-  font-size: 34px; font-weight: 700; color: var(--c-up);
-  font-variant-numeric: tabular-nums; line-height: 1; margin-bottom: 10px;
-}
-.limit-count span { font-size: 15px; font-weight: 400; color: var(--c-muted); margin-left: 3px; }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.chip {
-  font-size: 12px; font-weight: 600; padding: 3px 10px;
-  border-radius: var(--r-pill); background: #fff0f1; color: var(--c-up);
-}
-.empty-text { font-size: 13px; color: var(--c-muted); }
 
 /* ── Skeleton ─────────────────────────────────────────────── */
 @keyframes shimmer {
@@ -325,6 +282,14 @@ tbody td {
 tbody td:first-child  { text-align: center; color: var(--c-muted); font-weight: 600; font-size: 12px; }
 tbody td:nth-child(2) { text-align: left; font-weight: 600; }
 .td-code { display: block; font-size: 10px; color: var(--c-muted); font-weight: 400; }
+
+/* 거래대금 표만 맨 앞에 거래대금/시가총액 열이 있어 순위·종목명이 한 칸씩 밀림 */
+.vol-table thead th:first-child  { text-align: right; width: auto; }
+.vol-table tbody td:first-child  { text-align: right; color: var(--c-heading); font-weight: 400; font-size: 13px; }
+.vol-table thead th:nth-child(2) { text-align: center; width: 42px; }
+.vol-table tbody td:nth-child(2) { text-align: center; color: var(--c-muted); font-weight: 600; font-size: 12px; }
+.vol-table thead th:nth-child(3) { text-align: left; }
+.vol-table tbody td:nth-child(3) { text-align: left; font-weight: 600; }
 .up   { color: var(--c-up)   !important; }
 .down { color: var(--c-down) !important; }
 .flat { color: var(--c-flat) !important; }
@@ -411,8 +376,7 @@ tbody td:nth-child(2) { text-align: left; font-weight: 600; }
 }
 @media (max-width: 767px) {
   .upload-section { grid-template-columns: 1fr; }
-  .grid-3, .grid-2 { grid-template-columns: 1fr; }
-  .grid-2 { margin-top: 0; }
+  .grid-3 { grid-template-columns: 1fr; }
   .index-grid { gap: 10px; }
   .index-card { padding: 14px 12px; }
   .index-close { font-size: 21px; }

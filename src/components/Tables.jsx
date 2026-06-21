@@ -6,7 +6,8 @@ function SortIcon({ col, sort }) {
 }
 
 function VolTable({ vol, sort, onSort, onRowClick }) {
-  const sorted = [...vol].sort((a, b) => {
+  const withRatio = vol.map(s => ({ ...s, ratio: s.marketCap > 0 ? s.tradingVolume / s.marketCap : null }));
+  const sorted = [...withRatio].sort((a, b) => {
     const av = a[sort.col], bv = b[sort.col];
     if (typeof av === 'string') return sort.dir === 'asc' ? av.localeCompare(bv, 'ko') : bv.localeCompare(av, 'ko');
     return sort.dir === 'asc' ? (av ?? -Infinity) - (bv ?? -Infinity) : (bv ?? -Infinity) - (av ?? -Infinity);
@@ -19,9 +20,10 @@ function VolTable({ vol, sort, onSort, onRowClick }) {
   );
 
   return (
-    <table>
+    <table className="vol-table">
       <thead>
         <tr>
+          {th('ratio', '거래대금/시가총액')}
           <th className={sort.col === 'rank' ? 'sorted' : ''} onClick={() => onSort('v', 'rank')}>
             순위<SortIcon col="rank" sort={sort} />
           </th>
@@ -35,6 +37,7 @@ function VolTable({ vol, sort, onSort, onRowClick }) {
       <tbody>
         {sorted.map(s => (
           <tr key={s.code} className={s.changeRate >= 29.9 ? 'limit-up' : ''} onClick={() => onRowClick(s)}>
+            <td>{s.ratio != null ? s.ratio.toFixed(2) : '-'}</td>
             <td>{s.rank}</td>
             <td>{s.name}<span className="td-code">{s.code}</span></td>
             <td>{fmtN(s.price)}</td>
