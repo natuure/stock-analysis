@@ -27,6 +27,10 @@ TOSS_CLIENT_ID     = os.getenv('TOSS_CLIENT_ID')
 TOSS_CLIENT_SECRET = os.getenv('TOSS_CLIENT_SECRET')
 TOSS_BASE = 'https://openapi.tossinvest.com'
 
+KIS_APP_KEY    = os.getenv('KIS_APP_KEY')
+KIS_APP_SECRET = os.getenv('KIS_APP_SECRET')
+KIS_BASE = 'https://openapi.koreainvestment.com:9443'
+
 SPAM_KEYWORDS = ['무료 리딩방', '카톡방', '클릭 시 이동', '급등주 추천', 'vip 회원', '선착순 모집']
 DAYS_KO = ['월', '화', '수', '목', '금', '토', '일']
 
@@ -117,6 +121,173 @@ def build_rate_list(df, top=50):
             'volume': float(r['Volume']),
         })
     return result
+
+
+# ── KIS 통합(KRX+NXT) 거래대금·등락률 보강 ───────────────────────────────────
+# FDR StockListing('KRX')은 KRX 거래소 단독 수치라 대체거래소 NXT에서 체결된
+# 거래량·거래대금·종가가 빠져 있다(2026-06-21 KIS로 직접 검증: UN=KRX+NXT 정확히 일치,
+# 종가도 더 늦게 마감하는 NXT 쪽 값이 그날의 진짜 최종 종가). 종목 1개당 1회 호출해야
+# 해서 전종목을 다 보강하긴 비효율적이므로, 이미 등락률 후보 기준으로 쓰던
+# RATE_MIN_AMOUNT(300억) 이상 종목만 추려 보강한다.
+
+def get_kis_token(db):
+    """JS api/candles.js의 getKisToken과 동일한 MongoDB kis_token 컬렉션을 공유해서
+    캐싱한다 — 발급은 1분당 1회 제한이라 Vercel 쪽과 토큰을 같이 써야 한다."""
+    col = db['kis_token']
+    cached = col.find_one({'_id': 'token'})
+    now_ms = time.time() * 1000
+    if cached and cached['expiresAt'] > now_ms + 5 * 60 * 1000:
+        return cached['accessToken']
+    r = requests.post(f'{KIS_BASE}/oauth2/tokenP', headers={
+        'Content-Type': 'application/json; charset=UTF-8',
+    }, json={
+        'grant_type': 'client_credentials',
+        'appkey': KIS_APP_KEY,
+        'appsecret': KIS_APP_SECRET,
+    }, timeout=10)
+    data = r.json()
+    if not r.ok:
+        raise RuntimeError(f'KIS 토큰 발급 실패: {data}')
+    expires_at = now_ms + data['expires_in'] * 1000
+    col.update_one(
+        {'_id': 'token'},
+        {'$set': {'accessToken': data['access_token'], 'expiresAt': expires_at}},
+        upsert=True,
+    )
+    return data['access_token']
+
+
+def _fetch_kis_itemchartprice(token, code, mrkt_code, d1, d2, max_retries=3):
+    """inquire-daily-itemchartprice 1회 호출(+재시도). KIS 호출 제한(EGW00201, "초당
+    거래건수를 초과하였습니다")에 걸리면 1초 쉬고 재시도한다 — 호출 사이에 sleep을 둬도
+    종목 300여 개를 빠르게 돌리면 실제로 종종 걸림(직접 확인함)."""
+    headers = {
+        'Content-Type': 'application/json; charset=UTF-8',
+        'authorization': f'Bearer {token}',
+        'appkey': KIS_APP_KEY,
+        'appsecret': KIS_APP_SECRET,
+        'tr_id': 'FHKST03010100',
+        'custtype': 'P',
+    }
+    params = {
+        'FID_COND_MRKT_DIV_CODE': mrkt_code,
+        'FID_INPUT_ISCD': code,
+        'FID_INPUT_DATE_1': d1.strftime('%Y%m%d'),
+        'FID_INPUT_DATE_2': d2.strftime('%Y%m%d'),
+        'FID_PERIOD_DIV_CODE': 'D',
+        'FID_ORG_ADJ_PRC': '0',
+    }
+    data = None
+    for _ in range(max_retries):
+        r = requests.get(
+            f'{KIS_BASE}/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice',
+            headers=headers, params=params, timeout=10,
+        )
+        data = r.json()
+        if data.get('msg_cd') == 'EGW00201':
+            time.sleep(1)
+            continue
+        if not r.ok or data.get('rt_cd') != '0':
+            raise RuntimeError(f'KIS 시세 조회 실패({code}, {mrkt_code}): {data.get("msg1")}')
+        rows = [row for row in (data.get('output2') or []) if row.get('stck_bsop_date')]
+        rows.sort(key=lambda row: row['stck_bsop_date'])
+        return rows
+    raise RuntimeError(f'KIS 호출 제한으로 재시도 끝까지 실패({code}, {mrkt_code}): {data.get("msg1")}')
+
+
+def fetch_kis_consolidated(token, code, date_str, lookback_days=10):
+    """FID_COND_MRKT_DIV_CODE=UN(KRX+NXT 통합)으로 최근 lookback_days치 일별 시세를
+    오래된→최신 순으로 반환한다. UN 모드는 전일대비 필드를 안 줘서(직접 확인함), 호출하는
+    쪽에서 연속된 두 행의 종가를 비교해 등락률을 계산해야 한다.
+    NXT에서 전혀 거래되지 않는 종목(우선주 등 일부)은 UN이 빈 배열을 반환하는 걸 직접
+    확인했음 — 이 경우 J(KRX 단독)로 재조회한다(NXT 거래가 없으니 KRX 단독이 곧 진짜
+    통합값과 같음)."""
+    d2 = datetime.strptime(date_str, '%Y-%m-%d')
+    d1 = d2 - timedelta(days=lookback_days)
+    rows = _fetch_kis_itemchartprice(token, code, 'UN', d1, d2)
+    if not rows:
+        rows = _fetch_kis_itemchartprice(token, code, 'J', d1, d2)
+    return rows
+
+
+def enrich_with_kis(df, date_str):
+    """RATE_MIN_AMOUNT(300억) 이상인 종목만 후보로 추려 KIS UN(통합) 데이터로 보강한다.
+    종목별 호출 실패(상장정지·일시 오류 등)는 그 종목만 FDR(KRX 단독) 값으로 폴백해서
+    명단에서 빠지지 않게 한다. KIS 전체를 못 쓰면(키 없음·토큰 발급 실패) None을 반환해
+    main()이 기존 FDR 전용 경로로 통째로 폴백하게 한다."""
+    if not KIS_APP_KEY or not KIS_APP_SECRET or not MONGODB_URI:
+        print('[경고] KIS_APP_KEY/SECRET 또는 MONGODB_URI 없음 — FDR 전용으로 폴백')
+        return None
+
+    candidates = df[df['Amount'] >= RATE_MIN_AMOUNT]
+    client = MongoClient(MONGODB_URI)
+    db = client.get_default_database()
+    try:
+        token = get_kis_token(db)
+    except Exception as e:
+        client.close()
+        print(f'[경고] KIS 토큰 발급 실패, FDR 전용으로 폴백: {e}')
+        return None
+
+    today_str = date_str.replace('-', '')
+    enriched = []
+    ok = fallback = 0
+    for _, r in candidates.iterrows():
+        code = r['Code']
+        item = {'code': code, 'name': r['Name']}
+        try:
+            rows = fetch_kis_consolidated(token, code, date_str)
+            today = rows[-1] if rows else None
+            if not today or today['stck_bsop_date'] != today_str:
+                raise ValueError('오늘자 통합 데이터 없음(거래정지 등)')
+            close = float(today['stck_clpr'])
+            prev  = float(rows[-2]['stck_clpr']) if len(rows) >= 2 else close
+            item.update(
+                price=close,
+                change=close - prev,
+                changeRate=(close - prev) / prev * 100 if prev else 0.0,
+                volume=float(today['acml_vol']),
+                tradingVolume=float(today['acml_tr_pbmn']) / 1_000_000,
+                marketCap=close * float(r['Stocks']) / 100_000_000,
+            )
+            ok += 1
+        except Exception:
+            item.update(
+                price=float(r['Close']),
+                change=float(r['Changes']),
+                changeRate=float(r['ChagesRatio']),
+                volume=float(r['Volume']),
+                marketCap=float(r['Marcap']) / 100_000_000,
+                tradingVolume=float(r['Amount']) / 1_000_000,
+            )
+            fallback += 1
+        enriched.append(item)
+        time.sleep(0.12)  # KIS 초당 20건 제한 대비(약 8건/초로 보수적으로 — fetch_kis_consolidated의
+                           # 재시도 로직과 함께 EGW00201(초당 거래건수 초과)을 줄이기 위함
+
+    client.close()
+    print(f'KIS 통합 보강: {len(candidates)}개 후보 중 {ok}개 성공, {fallback}개 FDR 폴백')
+    return enriched
+
+
+def build_vol_rate_from_enriched(enriched, prev_ranks, top=50):
+    vol = sorted(enriched, key=lambda s: s['tradingVolume'], reverse=True)[:top]
+    for rank, s in enumerate(vol, start=1):
+        s['rank'] = rank
+        s['prevRank'] = prev_ranks.get(s['code'])
+
+    rate_sorted = sorted(enriched, key=lambda s: s['changeRate'], reverse=True)[:top]
+    rate = [{
+        'rank': i + 1,
+        'code': s['code'],
+        'name': s['name'],
+        'price': s['price'],
+        'change': s['change'],
+        'changeRate': s['changeRate'],
+        'isUpperLimit': s['changeRate'] >= UPPER_LIMIT_RATE,
+        'volume': s['volume'],
+    } for i, s in enumerate(rate_sorted)]
+    return vol, rate
 
 
 # ── Naver 뉴스 API ───────────────────────────────────────────────────────────
@@ -293,8 +464,14 @@ def main():
     print(f'전종목 {len(df)}개 수집 완료')
 
     prev_ranks = get_previous_vol_ranks(date)
-    vol  = build_vol_list(df, prev_ranks)
-    rate = build_rate_list(df)
+
+    print('KIS 통합(KRX+NXT) 데이터로 거래대금·등락률 상위 보강 중...')
+    enriched = enrich_with_kis(df, date)
+    if enriched is not None:
+        vol, rate = build_vol_rate_from_enriched(enriched, prev_ranks)
+    else:
+        vol  = build_vol_list(df, prev_ranks)
+        rate = build_rate_list(df)
     print(f'거래대금 상위 {len(vol)}개, 등락률 상위 {len(rate)}개 종목 산출 완료')
 
     indices = fetch_indices()
