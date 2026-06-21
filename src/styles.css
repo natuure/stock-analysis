@@ -392,14 +392,6 @@ tbody td:nth-child(2) { text-align: left; font-weight: 600; }
 .cal-day.selected { background: var(--c-primary); color: #fff; }
 .cal-day.selected::after { background: rgba(255,255,255,.8); }
 .cal-day.has-data:not(.selected):hover { background: var(--c-surface); }
-.cal-day-idx {
-  width: auto; height: auto; min-width: 32px;
-  flex-direction: column; gap: 1px; border-radius: 8px;
-  padding: 4px 2px; cursor: pointer;
-}
-.cal-day-idx:hover { background: var(--c-surface); }
-.cal-day-idx-date { font-size: 11px; font-weight: 600; color: var(--c-heading); }
-.cal-day-idx-row { font-size: 8px; font-weight: 600; line-height: 1.2; }
 
 /* ── Responsive ───────────────────────────────────────────── */
 @media (max-width: 1023px) {

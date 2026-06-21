@@ -1,4 +1,4 @@
-import { ls, rc } from '../utils';
+import { ls } from '../utils';
 
 const DOWS   = ['일', '월', '화', '수', '목', '금', '토'];
 const MONTHS = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
@@ -63,9 +63,11 @@ export default function Calendar({ year, month, selected, onMove, onDayClick, on
 
         {/* 주 단위 렌더링 */}
         {weeks.map((week, wi) => {
-          const firstReal = week.find(d => !d.other);
-          const refDate   = firstReal
-            ? new Date(firstReal.iso)
+          // ISO 주차는 월요일 기준이라, 행의 일요일(Sun)이 아니라 월~금 중 실제 날짜를
+          // 기준으로 잡아야 그 행의 월~금 거래일과 같은 주차가 나온다.
+          const weekAnchor = week.slice(1, 6).find(d => !d.other) || week.find(d => !d.other);
+          const refDate    = weekAnchor
+            ? new Date(weekAnchor.iso)
             : new Date(year, month, week[0].d);
           const weekNum = getISOWeek(refDate);
           const weekKey = `${refDate.getFullYear()}-W${weekNum}`;
@@ -79,23 +81,12 @@ export default function Calendar({ year, month, selected, onMove, onDayClick, on
               </div>
             );
 
-            // 토요일(di===6) 칸에 그 주(월~금) 코스피/코스닥 변동률 표시
+            // 토요일(di===6) 칸을 누르면 그 주(월~금) 코스피/코스닥 변동 패널을 띄움
             if (di === 6 && hasIdx) {
               return (
                 <div className="cal-day-wrap" key={`${wi}-${di}`}>
-                  <div
-                    className="cal-day cal-day-idx"
-                    onClick={onWeekClick ? () => onWeekClick(weekKey) : undefined}
-                  >
-                    <span className="cal-day-idx-date">{day.d}</span>
-                    <span className={`cal-day-idx-row ${rc(idx.kospi.changeRate)}`}>
-                      {idx.kospi.changeRate > 0 ? '▲' : idx.kospi.changeRate < 0 ? '▼' : ''}
-                      {Math.abs(idx.kospi.changeRate).toFixed(1)}%
-                    </span>
-                    <span className={`cal-day-idx-row ${rc(idx.kosdaq.changeRate)}`}>
-                      {idx.kosdaq.changeRate > 0 ? '▲' : idx.kosdaq.changeRate < 0 ? '▼' : ''}
-                      {Math.abs(idx.kosdaq.changeRate).toFixed(1)}%
-                    </span>
+                  <div className="cal-day has-data" onClick={() => onWeekClick && onWeekClick(weekKey)}>
+                    {day.d}
                   </div>
                 </div>
               );
