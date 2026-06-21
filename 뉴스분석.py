@@ -423,6 +423,7 @@ def get_toss_token():
 
 CANDLE_COUNT = 85  # 화면에는 60개만 표시하지만, 20일선이 맨 왼쪽 캔들까지 끊김 없이 그려지려면
                     # 19거래일치 선행 데이터가 더 필요해 여유를 두고 85개를 가져온다.
+HIGH60_WINDOW = 60  # "60일 신고가" 계산에 쓰는 최근 거래일 수 (화면 표시 구간과 동일)
 
 def fetch_candles(token, code, date_str):
     before = f'{date_str}T16:00:00+09:00'
@@ -433,6 +434,8 @@ def fetch_candles(token, code, date_str):
     return r.json()['result']['candles']
 
 def cache_candles(vol, rate, date_str):
+    """토스 캔들을 캐싱하면서, 이미 받아온 캔들의 highPrice로 60일 신고가 대비 등락률
+    (high60Rate)도 같이 계산해 vol/rate 딕셔너리에 채워넣는다 — API 추가 호출 없음."""
     if not TOSS_CLIENT_ID or not TOSS_CLIENT_SECRET:
         print('[경고] TOSS_CLIENT_ID/SECRET 없음 — 캔들 캐싱 건너뜀')
         return
@@ -450,11 +453,14 @@ def cache_candles(vol, rate, date_str):
 
     client = MongoClient(MONGODB_URI)
     col = client.get_default_database()['candles']
+    high60_map = {}
     ok = fail = 0
     for i, code in enumerate(codes, 1):
         try:
             candles = fetch_candles(token, code, date_str)
             col.update_one({'_id': f'{code}_{date_str}'}, {'$set': {'candles': candles}}, upsert=True)
+            if candles:
+                high60_map[code] = max(float(c['highPrice']) for c in candles[:HIGH60_WINDOW])
             ok += 1
         except Exception as e:
             fail += 1
@@ -462,6 +468,13 @@ def cache_candles(vol, rate, date_str):
         time.sleep(1.1)  # 캔들 조회 Rate Limit (burst 5, 초당 1개 충전) 대비
     client.close()
     print(f'캔들 캐싱 완료: {ok}개 성공, {fail}개 실패')
+
+    # 0%를 상한으로 클램프 — 토스 캔들은 KRX 단독이라 NXT 포함 현재가(KIS UN)보다 그날 고가가
+    # 낮게 잡혀 있을 수 있는데, 그런 데이터 소스 차이로 양수가 나오는 걸 막고 "현재가가 60일
+    # 신고가(이상)면 0%"를 항상 보장한다.
+    for s in vol + rate:
+        high60 = high60_map.get(s['code'])
+        s['high60Rate'] = min(0.0, (s['price'] - high60) / high60 * 100) if high60 else None
 
 
 # ── 메인 ─────────────────────────────────────────────────────────────────────
@@ -490,11 +503,12 @@ def main():
     print(f"코스피 {indices['kospi']['close']:.2f} ({indices['kospi']['changeRate']:+.2f}%), "
           f"코스닥 {indices['kosdaq']['close']:.2f} ({indices['kosdaq']['changeRate']:+.2f}%)")
 
+    # 토스증권 일봉 캔들 캐싱 (종목 클릭 시 모달에서 사용) + 60일 신고가 대비 등락률 계산
+    # (vol/rate에 high60Rate를 채워넣으므로 MongoDB 저장보다 먼저 실행해야 함)
+    cache_candles(vol, rate, date)
+
     # MongoDB에 종목 데이터 저장 (웹앱 자동 로드용)
     save_to_mongodb(date, date_korean, vol, rate, indices)
-
-    # 토스증권 일봉 캔들 캐싱 (종목 클릭 시 모달에서 사용)
-    cache_candles(vol, rate, date)
 
     # Naver 뉴스 수집
     names = list(dict.fromkeys([s['name'] for s in vol + rate]))

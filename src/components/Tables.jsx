@@ -9,7 +9,7 @@ function VolTable({ vol, sort, onSort, onRowClick }) {
   const sorted = [...vol].sort((a, b) => {
     const av = a[sort.col], bv = b[sort.col];
     if (typeof av === 'string') return sort.dir === 'asc' ? av.localeCompare(bv, 'ko') : bv.localeCompare(av, 'ko');
-    return sort.dir === 'asc' ? av - bv : bv - av;
+    return sort.dir === 'asc' ? (av ?? -Infinity) - (bv ?? -Infinity) : (bv ?? -Infinity) - (av ?? -Infinity);
   });
 
   const th = (col, label) => (
@@ -28,7 +28,7 @@ function VolTable({ vol, sort, onSort, onRowClick }) {
           {th('name', '종목명')}
           {th('price', '현재가')}
           {th('changeRate', '등락률')}
-          {th('volume', '거래량')}
+          {th('high60Rate', '60일 신고가대비')}
           {th('tradingVolume', '거래대금(백만원)')}
         </tr>
       </thead>
@@ -39,7 +39,7 @@ function VolTable({ vol, sort, onSort, onRowClick }) {
             <td>{s.name}<span className="td-code">{s.code}</span></td>
             <td>{fmtN(s.price)}</td>
             <td className={rc(s.changeRate)}>{s.changeRate >= 0 ? '+' : ''}{s.changeRate.toFixed(2)}%</td>
-            <td>{fmtN(s.volume)}</td>
+            <td>{s.high60Rate != null ? `${s.high60Rate.toFixed(2)}%` : '-'}</td>
             <td>{fmtN(s.tradingVolume)}</td>
           </tr>
         ))}
@@ -52,7 +52,7 @@ function RateTable({ rate, sort, onSort, onRowClick }) {
   const sorted = [...rate].sort((a, b) => {
     const av = a[sort.col], bv = b[sort.col];
     if (typeof av === 'string') return sort.dir === 'asc' ? av.localeCompare(bv, 'ko') : bv.localeCompare(av, 'ko');
-    return sort.dir === 'asc' ? av - bv : bv - av;
+    return sort.dir === 'asc' ? (av ?? -Infinity) - (bv ?? -Infinity) : (bv ?? -Infinity) - (av ?? -Infinity);
   });
 
   const th = (col, label) => (
@@ -71,7 +71,7 @@ function RateTable({ rate, sort, onSort, onRowClick }) {
           {th('name', '종목명')}
           {th('price', '현재가')}
           {th('changeRate', '등락률')}
-          {th('volume', '거래량')}
+          {th('high60Rate', '60일 신고가대비')}
         </tr>
       </thead>
       <tbody>
@@ -81,7 +81,7 @@ function RateTable({ rate, sort, onSort, onRowClick }) {
             <td>{s.name}<span className="td-code">{s.code}</span></td>
             <td>{fmtN(s.price)}</td>
             <td className={rc(s.changeRate)}>{s.changeRate >= 0 ? '+' : ''}{s.changeRate.toFixed(2)}%</td>
-            <td>{fmtN(s.volume)}</td>
+            <td>{s.high60Rate != null ? `${s.high60Rate.toFixed(2)}%` : '-'}</td>
           </tr>
         ))}
       </tbody>
