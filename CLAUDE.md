@@ -6,6 +6,8 @@ MongoDB에 저장 → 웹앱 달력에서 날짜 클릭 시 데이터·AI 분석
 HTS 엑셀 수동 업로드 단계 없이 Python 스크립트 + MongoDB 기반으로 완전 자동화됨.
 종목 클릭 시 KIS(한국투자증권) Open API로 일봉·주봉 차트(이동평균선 포함)를 실시간 조회.
 KIS 장애 시에만 토스증권 캔들 캐시(일봉만)로 폴백. 차트는 캔들이 아니라 OHLC 바 모양으로 표시됨.
+달력의 토요일 칸은 그 주(월~금) 코스피·코스닥 변동률을 보여주는데, `python 주간분석.py`가
+FDR로 미리 계산해 MongoDB에 저장해두고 웹앱은 그 결과만 읽음 (실시간 KIS 호출 아님).
 화면 상단에는 탭 3개(거래대금·등락률 분석 / 종목 분석 / 조건 검색)가 있고, 종목 분석·조건 검색은
 아직 내용 미정인 "준비 중" placeholder 상태.
 
@@ -26,8 +28,12 @@ python 뉴스분석.py  ← 장마감 후 실행
 Claude Code "분석해줘" 요청 → 분석결과/분석결과_YYYY-MM-DD.json 생성
          ↓
 python 저장분석.py → MongoDB ai_analysis 컬렉션 저장
+
+python 주간분석.py  ← 아무 때나 실행 가능 (별도 흐름, 위 일간 분석과 무관)
+    └── FDR로 코스피/코스닥 주간(월~금) 변동률 계산 → MongoDB weekly_indices 컬렉션 저장
          ↓
 웹앱: /api/getData, /api/getAnalysis 는 MongoDB만 읽어서 화면 표시
+     (달력 토요일 칸의 주간 변동률도 /api/getData가 weekly_indices를 같이 읽어 내려줌)
      /api/candles 는 KIS Open API를 직접 호출(실시간) → 실패 시에만 candles 캐시(토스) 폴백
 ```
 
@@ -44,7 +50,7 @@ python 저장분석.py → MongoDB ai_analysis 컬렉션 저장
 | 하고 싶은 작업 | 참고 파일 |
 |---|---|
 | 배포 구조, 폴더/파일 구조, MongoDB 스키마, API 엔드포인트, 환경변수 확인 | [ARCHITECTURE.md](ARCHITECTURE.md) |
-| `뉴스분석.py`/`저장분석.py` 사용법, FDR·토스 데이터 수집 로직, vol/rate/indices 데이터 구조, 캐시 버전(`CACHE_VERSION`) 규칙 | [DATA_PIPELINE.md](DATA_PIPELINE.md) |
+| `뉴스분석.py`/`저장분석.py`/`주간분석.py` 사용법, FDR·토스 데이터 수집 로직, vol/rate/indices/weekly_indices 데이터 구조, 캐시 버전(`CACHE_VERSION`) 규칙 | [DATA_PIPELINE.md](DATA_PIPELINE.md) |
 | 화면/컴포넌트 구성(Cards·Tables·Analysis·StockDetailModal·IndexSummary), 디자인 토큰, 반응형 규칙 | [FRONTEND.md](FRONTEND.md) |
 | 로컬 빌드·개발 환경 (Google Drive npm 이슈 우회) | [DEV.md](DEV.md) |
 | 과거에 제거되거나 대체된 기능 이력 | [HISTORY.md](HISTORY.md) |
@@ -64,4 +70,7 @@ python 저장분석.py → MongoDB ai_analysis 컬렉션 저장
   상태 ([FRONTEND.md](FRONTEND.md)).
 - **MongoDB 스키마를 바꿨는데 화면에 안 보임** → `src/utils.js`의 `CACHE_VERSION`을 올렸는지 확인
   (안 올리면 옛 localStorage 캐시가 새 필드를 영원히 안 가져옴, [DATA_PIPELINE.md](DATA_PIPELINE.md)).
+- **달력 토요일 칸에 주간 변동률이 안 보임/안 바뀜** → `python 주간분석.py`를 실행해야 MongoDB
+  `weekly_indices`가 채워짐/갱신됨. 실시간 KIS 호출이 아니라 이 스크립트를 수동 실행해야
+  반영되는 구조임 ([DATA_PIPELINE.md](DATA_PIPELINE.md)).
 - **로컬에서 `npm run dev`/`npm run build`가 이상하게 실패함** → [DEV.md](DEV.md)의 Google Drive 우회 방법 사용.

@@ -178,36 +178,6 @@ export function normRate(rows) {
   }).filter(r => r && r.name);
 }
 
-export function getISOWeek(date) {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const day = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - day);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
-}
-
-export function weekKeyFromDate(date) {
-  return `${date.getFullYear()}-W${getISOWeek(date)}`;
-}
-
-function kisDateToObj(s) {
-  return new Date(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8));
-}
-
-// candles: api/candles.js 응답과 동일 형식([0]=최신 주 ... [n]=과거 주). 연속된 두 주봉의
-// 종가를 비교해 주차별 {close, change, changeRate} 맵을 만든다 (IndexSummary 카드용).
-export function weeklyIndexMap(candles) {
-  const map = {};
-  for (let i = 0; i < candles.length - 1; i++) {
-    const close     = parseFloat(candles[i].closePrice);
-    const prevClose = parseFloat(candles[i + 1].closePrice);
-    if (!close || !prevClose) continue;
-    const weekKey = weekKeyFromDate(kisDateToObj(candles[i].timestamp));
-    map[weekKey] = { close, change: close - prevClose, changeRate: (close - prevClose) / prevClose * 100 };
-  }
-  return map;
-}
-
 export function saveWeeklyToStorage(weekKey, rows) {
   lsSet(`weekly_${weekKey}`, JSON.stringify({ rows, weekKey }));
   const dates = JSON.parse(ls('weekly_dates') || '[]');

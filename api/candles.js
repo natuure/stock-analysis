@@ -53,23 +53,10 @@ function ymd(dateStr, offsetDays) {
   return `${dt.getUTCFullYear()}${String(dt.getUTCMonth() + 1).padStart(2, '0')}${String(dt.getUTCDate()).padStart(2, '0')}`;
 }
 
-// 종목(J) / 지수(U)는 엔드포인트·tr_id·응답 필드명만 다르고 나머지 호출 방식은 동일
-const KIND_CONFIG = {
-  stock: {
-    path: 'inquire-daily-itemchartprice', trId: 'FHKST03010100', mrktDiv: 'J',
-    f: { open: 'stck_oprc', high: 'stck_hgpr', low: 'stck_lwpr', close: 'stck_clpr', vol: 'acml_vol' },
-  },
-  index: {
-    path: 'inquire-daily-indexchartprice', trId: 'FHKUP03500100', mrktDiv: 'U',
-    f: { open: 'bstp_nmix_oprc', high: 'bstp_nmix_hgpr', low: 'bstp_nmix_lwpr', close: 'bstp_nmix_prpr', vol: 'acml_vol' },
-  },
-};
-
-async function fetchKisCandles(token, code, dateStr, period, kind = 'stock') {
+async function fetchKisCandles(token, code, dateStr, period) {
   const { count, lookbackDays } = PERIOD_CONFIG[period];
-  const cfg = KIND_CONFIG[kind];
-  const url = new URL(`${KIS_BASE}/uapi/domestic-stock/v1/quotations/${cfg.path}`);
-  url.searchParams.set('FID_COND_MRKT_DIV_CODE', cfg.mrktDiv);
+  const url = new URL(`${KIS_BASE}/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice`);
+  url.searchParams.set('FID_COND_MRKT_DIV_CODE', 'J');
   url.searchParams.set('FID_INPUT_ISCD', code);
   url.searchParams.set('FID_INPUT_DATE_1', ymd(dateStr, -lookbackDays));
   url.searchParams.set('FID_INPUT_DATE_2', ymd(dateStr, 0));
@@ -82,7 +69,7 @@ async function fetchKisCandles(token, code, dateStr, period, kind = 'stock') {
       authorization: `Bearer ${token}`,
       appkey: process.env.KIS_APP_KEY,
       appsecret: process.env.KIS_APP_SECRET,
-      tr_id: cfg.trId,
+      tr_id: 'FHKST03010100',
       custtype: 'P',
     },
   });
@@ -93,11 +80,11 @@ async function fetchKisCandles(token, code, dateStr, period, kind = 'stock') {
     .filter(row => row.stck_bsop_date)
     .map(row => ({
       timestamp: row.stck_bsop_date,
-      openPrice: row[cfg.f.open],
-      highPrice: row[cfg.f.high],
-      lowPrice: row[cfg.f.low],
-      closePrice: row[cfg.f.close],
-      volume: row[cfg.f.vol],
+      openPrice: row.stck_oprc,
+      highPrice: row.stck_hgpr,
+      lowPrice: row.stck_lwpr,
+      closePrice: row.stck_clpr,
+      volume: row.acml_vol,
     }))
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
     .slice(0, count);
@@ -113,20 +100,19 @@ module.exports = async (req, res) => {
   const { symbol, date } = req.query;
   if (!symbol || !date) return res.status(400).json({ error: 'symbol, date 파라미터 필요' });
   const period = PERIOD_CONFIG[req.query.period] ? req.query.period : 'D';
-  const kind   = req.query.market === 'index' ? 'index' : 'stock';
 
   const db = await getDb();
 
   try {
     const token = await getKisToken(db);
-    const candles = await fetchKisCandles(token, symbol, date, period, kind);
+    const candles = await fetchKisCandles(token, symbol, date, period);
     if (candles.length) return res.json({ candles });
   } catch (e) {
     console.error('[KIS 캔들 조회 실패]', e.message);
   }
 
-  // 토스 캐시는 종목 일봉만 보관하므로 지수, 또는 일봉 외 주기는 폴백 대상이 아님
-  if (kind === 'index' || period !== 'D') return res.json({ candles: [] });
+  // 토스 캐시는 일봉만 보관하므로 주봉 등 다른 주기는 폴백 대상이 아님
+  if (period !== 'D') return res.json({ candles: [] });
 
   try {
     const doc = await db.collection('candles').findOne({ _id: `${symbol}_${date}` });

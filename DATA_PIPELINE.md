@@ -26,6 +26,24 @@ python 저장분석.py "분석결과/분석결과_2026-06-17.json"  # 파일 직
 ```
 - Claude Code가 생성한 분석 JSON을 MongoDB `ai_analysis`에 저장
 
+### 주간분석.py (2026-06-21 도입)
+```bash
+python 주간분석.py   # 아무 때나 실행 가능 (장마감 후가 자연스러움)
+```
+- `fdr.DataReader('KS11'|'KQ11')`로 최근 540일치 일별 종가를 받아
+  `resample('W-FRI')`로 주(월~금) 단위 종가로 묶고, 연속된 두 주의 종가를 비교해
+  `{close, change, changeRate}`를 계산
+- 주차 키는 `f'{d.year}-W{iso_week}'` 형태(예: `2026-W25`) — `src/utils.js`의
+  (현재는 `Calendar.jsx` 내부에 로컬로 있는) ISO 주차 계산과 동일한 규칙이어야
+  웹앱이 키를 매칭할 수 있음. **숫자가 아닌 문자열이라 사전식 정렬로는 시간순이
+  안 됨** (`"2026-W9"` > `"2026-W25"`) — `weekly_changes()`가 최신 주를 찾을 때
+  `max()` 대신 마지막으로 반환된 날짜를 따로 추적하는 이유
+- MongoDB `weekly_indices` 컬렉션에 주차별로 upsert (실행마다 최근 ~76주를 통째로 갱신)
+- 웹앱 `/api/getData`가 이 컬렉션 전체를 같이 읽어 `weeklyIndices`로 내려주고,
+  달력의 **토요일 칸**이 그 주(월~금)의 코스피/코스닥 변동률을 표시함
+  (`Calendar.jsx`가 행의 월~금 중 실제 날짜로 주차를 계산해 매칭 — 일요일 기준으로
+  하면 ISO 주차가 하루 앞당겨지는 버그가 있었음, 2026-06-21 수정)
+
 ---
 
 ## 데이터 수집 (FinanceDataReader)
@@ -93,10 +111,16 @@ python 저장분석.py "분석결과/분석결과_2026-06-17.json"  # 파일 직
 // contractStrength 필드 제거됨 (FDR 전환 시 더 이상 제공 불가)
 ```
 
-**indices 필드** (stock_data 문서에 같이 저장됨):
+**indices 필드** (stock_data 문서에 같이 저장됨, 일간):
 ```javascript
 { kospi: { close, change, changeRate }, kosdaq: { close, change, changeRate } }
 // change = 포인트 변동(부호 포함), changeRate = %
+```
+
+**weekly_indices 컬렉션** (`_id`가 주차 키, 주간분석.py가 채움):
+```javascript
+{ _id: "2026-W25", kospi: { close, change, changeRate }, kosdaq: { close, change, changeRate } }
+// close/change는 그 주 마지막 거래일 기준, changeRate는 전주 마지막 거래일 종가 대비 %
 ```
 
 **localStorage 구조:**
