@@ -39,9 +39,11 @@ function CandleChart({ candles, maLines }) {
   const maValues = maSeries.flatMap(line => line.values.filter(v => v !== null));
   const max = Math.max(...highs, ...maValues);
   const min = Math.min(...lows, ...maValues);
-  const range = max - min || 1;
+  const logMin = Math.log(min);
+  const logMax = Math.log(max);
+  const logRange = (logMax - logMin) || 1; // 가격이 전혀 안 움직인 극단적 경우 0 나눔 방지
   const colW = (W - PAD * 2) / visible.length;
-  const y = (price) => PAD + PRICE_H * (1 - (price - min) / range);
+  const y = (price) => PAD + PRICE_H * (1 - (Math.log(price) - logMin) / logRange);
   const cx = (i) => PAD + colW * i + colW / 2;
 
   const volumes   = visible.map(c => parseFloat(c.volume));
