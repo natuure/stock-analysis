@@ -193,7 +193,7 @@ export function loadWeeklyFromStorage(weekKey) {
 }
 
 // stock_data 문서 스키마가 바뀔 때마다 올려서, 옛 캐시를 무효화하고 서버에서 다시 받아오게 한다.
-export const CACHE_VERSION = 7;
+export const CACHE_VERSION = 8;
 
 export function saveAnalysisToStorage(dateISO, data) {
   lsSet(`analysis_${dateISO}`, JSON.stringify({ ...data, _v: CACHE_VERSION }));

@@ -434,8 +434,9 @@ def fetch_candles(token, code, date_str):
     return r.json()['result']['candles']
 
 def cache_candles(vol, rate, date_str):
-    """토스 캔들을 캐싱하면서, 이미 받아온 캔들의 highPrice로 60일 신고가 대비 등락률
-    (high60Rate)도 같이 계산해 vol/rate 딕셔너리에 채워넣는다 — API 추가 호출 없음."""
+    """토스 캔들을 캐싱하면서, 이미 받아온 캔들의 closePrice로 60일 신고가(종가 기준) 대비
+    등락률(high60Rate)도 같이 계산해 vol/rate 딕셔너리에 채워넣는다 — API 추가 호출 없음.
+    intraday 고가(highPrice)가 아니라 종가 기준 — 일시적 꼬리(wick)를 신고가로 안 치기 위함."""
     if not TOSS_CLIENT_ID or not TOSS_CLIENT_SECRET:
         print('[경고] TOSS_CLIENT_ID/SECRET 없음 — 캔들 캐싱 건너뜀')
         return
@@ -460,7 +461,7 @@ def cache_candles(vol, rate, date_str):
             candles = fetch_candles(token, code, date_str)
             col.update_one({'_id': f'{code}_{date_str}'}, {'$set': {'candles': candles}}, upsert=True)
             if candles:
-                high60_map[code] = max(float(c['highPrice']) for c in candles[:HIGH60_WINDOW])
+                high60_map[code] = max(float(c['closePrice']) for c in candles[:HIGH60_WINDOW])
             ok += 1
         except Exception as e:
             fail += 1
