@@ -102,8 +102,8 @@ Python (로컬 실행, 고정 IP)
 |------|------|------|
 | `MONGODB_URI` | .env.local + Vercel | MongoDB Atlas 연결 |
 | `ANTHROPIC_API_KEY` | .env.local + Vercel | Claude API (analyzeStocks 미사용) |
-| `NAVER_CLIENT_ID` | .env.local | Naver 검색 API (뉴스분석.py) |
-| `NAVER_CLIENT_SECRET` | .env.local | Naver 검색 API (뉴스분석.py) |
+| `NAVER_CLIENT_ID` | .env.local | Naver 검색 API (뉴스분석.py, 종목분석.py) |
+| `NAVER_CLIENT_SECRET` | .env.local | Naver 검색 API (뉴스분석.py, 종목분석.py) |
 | `TOSS_CLIENT_ID` | .env.local | 토스증권 Open API OAuth2 (뉴스분석.py, IP 허용 목록 때문에 로컬에서만 사용) |
 | `TOSS_CLIENT_SECRET` | .env.local | 토스증권 Open API OAuth2 (뉴스분석.py, IP 허용 목록 때문에 로컬에서만 사용) |
 | `KIS_APP_KEY` | .env.local + Vercel | KIS(한국투자증권) Open API 인증 (api/candles.js, IP 제한 없어 Vercel에서 직접 호출) |
