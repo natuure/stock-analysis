@@ -31,7 +31,7 @@ export function toCode(v) {
 }
 export function fmtN(n) {
   if (n === null || n === undefined || isNaN(n)) return '-';
-  return Number(n).toLocaleString('ko-KR');
+  return Math.round(Number(n)).toLocaleString('ko-KR');
 }
 export function rc(r) { return r > 0 ? 'up' : r < 0 ? 'down' : 'flat'; }
 
