@@ -32,7 +32,8 @@ function CandleChart({ candles, maLines }) {
   const closes = full.map(c => parseFloat(c.closePrice));
   const maSeries = maLines.map(line => ({ ...line, values: sma(closes, line.period).slice(offset) }));
 
-  const W = 600, H = 220, PAD = 10;
+  const W = 600, PAD = 10, PRICE_H = 170, GAP = 10, VOL_H = 50;
+  const H = PAD + PRICE_H + GAP + VOL_H + PAD;
   const highs = visible.map(c => parseFloat(c.highPrice));
   const lows  = visible.map(c => parseFloat(c.lowPrice));
   const maValues = maSeries.flatMap(line => line.values.filter(v => v !== null));
@@ -40,14 +41,21 @@ function CandleChart({ candles, maLines }) {
   const min = Math.min(...lows, ...maValues);
   const range = max - min || 1;
   const colW = (W - PAD * 2) / visible.length;
-  const y = (price) => PAD + (H - PAD * 2) * (1 - (price - min) / range);
+  const y = (price) => PAD + PRICE_H * (1 - (price - min) / range);
   const cx = (i) => PAD + colW * i + colW / 2;
+
+  const volumes   = visible.map(c => parseFloat(c.volume));
+  const maxVol    = Math.max(...volumes) || 1;
+  const volBottom = PAD + PRICE_H + GAP + VOL_H;
+  const barH = (v) => (v / maxVol) * VOL_H;
+  const barY = (v) => volBottom - barH(v);
 
   return (
     <svg className="candle-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
       {visible.map((c, i) => {
         const o = parseFloat(c.openPrice), h = parseFloat(c.highPrice);
         const l = parseFloat(c.lowPrice), cl = parseFloat(c.closePrice);
+        const vol = parseFloat(c.volume);
         const up = cl >= o;
         const color = up ? BAR_UP : BAR_DOWN;
         const tick = colW * 0.3;
@@ -56,6 +64,7 @@ function CandleChart({ candles, maLines }) {
             <line x1={cx(i)} x2={cx(i)} y1={y(h)} y2={y(l)} style={{ stroke: color }} strokeWidth="1.4" />
             <line x1={cx(i) - tick} x2={cx(i)} y1={y(o)} y2={y(o)} style={{ stroke: color }} strokeWidth="1.4" />
             <line x1={cx(i)} x2={cx(i) + tick} y1={y(cl)} y2={y(cl)} style={{ stroke: color }} strokeWidth="1.4" />
+            <rect x={cx(i) - colW * 0.35} width={colW * 0.7} y={barY(vol)} height={barH(vol)} style={{ fill: color }} />
           </g>
         );
       })}
@@ -139,12 +148,6 @@ export default function StockDetailModal({ open, code, name, dateISO, onClose })
                 ))}
               </div>
               <CandleChart candles={candles} maLines={activeTab.maLines} />
-              <div className="candle-info">
-                <div>시가<b>{fmtN(last.openPrice)}</b></div>
-                <div>고가<b>{fmtN(last.highPrice)}</b></div>
-                <div>저가<b>{fmtN(last.lowPrice)}</b></div>
-                <div>거래량<b>{fmtN(last.volume)}</b></div>
-              </div>
             </>
           )}
         </div>

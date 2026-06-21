@@ -459,10 +459,5 @@ tbody td:nth-child(2) { text-align: left; font-weight: 600; }
 .candle-legend { display: flex; gap: 14px; margin-bottom: 6px; }
 .candle-legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--c-muted); }
 .candle-legend-item i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-.candle-chart { width: 100%; height: 220px; }
-.candle-info {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
-  margin-top: 12px; font-size: 12px; color: var(--c-muted);
-}
-.candle-info b { display: block; color: var(--c-heading); font-size: 13px; font-variant-numeric: tabular-nums; }
+.candle-chart { width: 100%; height: 250px; }
 .spin { animation: spin 1s linear infinite; display: inline-block; }
