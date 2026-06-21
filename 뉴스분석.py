@@ -43,10 +43,17 @@ def format_date_korean(date_str):
 UPPER_LIMIT_RATE = 29.5
 RATE_MIN_AMOUNT  = 30_000_000_000  # 등락률 순위 집계 대상 최소 거래대금 (300억)
 
+SPAC_PATTERN = '스팩|기업인수목적'
+
 def fetch_market_data():
-    """KRX 전종목 시세 조회 (KONEX 제외)."""
+    """KRX 전종목 시세 조회 (KONEX·스팩 제외).
+    ETF/ETN은 fdr.StockListing('KRX')에 원래 포함되지 않음(보통주/우선주만 반환되는 것을
+    직접 확인함 — KODEX 200 등 주요 ETF 코드가 안 잡힘) — 스팩만 이름 패턴으로 걸러낸다."""
     df = fdr.StockListing('KRX')
-    df = df[(df['Market'] != 'KONEX') & (df['Close'] > 0)]
+    df = df[
+        (df['Market'] != 'KONEX') & (df['Close'] > 0) &
+        (~df['Name'].str.contains(SPAC_PATTERN, na=False))
+    ]
     return df
 
 def fetch_indices():
