@@ -2,9 +2,10 @@ import { fmtN, rc } from '../utils';
 
 
 function CardA({ vol }) {
+  // tradingVolume은 백만원, marketCap은 억원 단위(1억원 = 100백만원)라 단위를 맞춰서 나눈다
   const top = [...vol]
     .filter(s => s.marketCap > 0)
-    .map(s => ({ ...s, ratio: s.tradingVolume / s.marketCap }))
+    .map(s => ({ ...s, ratio: s.tradingVolume / (s.marketCap * 100) }))
     .sort((a, b) => b.ratio - a.ratio)
     .slice(0, 5);
   return top.length ? (

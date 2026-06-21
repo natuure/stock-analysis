@@ -88,8 +88,8 @@ def build_vol_list(df, prev_ranks, top=50):
             'change': float(r['Changes']),
             'changeRate': float(r['ChagesRatio']),
             'volume': float(r['Volume']),
-            'marketCap': float(r['Marcap']),
-            'tradingVolume': float(r['Amount']),
+            'marketCap': float(r['Marcap']) / 100_000_000,    # 억원 단위
+            'tradingVolume': float(r['Amount']) / 1_000_000,  # 백만원 단위
         })
     return result
 

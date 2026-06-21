@@ -29,7 +29,7 @@ function VolTable({ vol, sort, onSort, onRowClick }) {
           {th('price', '현재가')}
           {th('changeRate', '등락률')}
           {th('volume', '거래량')}
-          {th('tradingVolume', '거래대금')}
+          {th('tradingVolume', '거래대금(백만원)')}
         </tr>
       </thead>
       <tbody>
