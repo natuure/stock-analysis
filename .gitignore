@@ -6,6 +6,8 @@ dist/
 # 데이터 파일
 데일리분석/
 분석결과/
+종목분석결과/
+_dart_corp_codes.json
 *.xlsx
 *.xls
 
