@@ -20,10 +20,9 @@ function VolTable({ vol, sort, onSort, onRowClick }) {
   );
 
   return (
-    <table className="vol-table">
+    <table>
       <thead>
         <tr>
-          {th('ratio', '거래대금/시가총액')}
           <th className={sort.col === 'rank' ? 'sorted' : ''} onClick={() => onSort('v', 'rank')}>
             순위<SortIcon col="rank" sort={sort} />
           </th>
@@ -31,18 +30,19 @@ function VolTable({ vol, sort, onSort, onRowClick }) {
           {th('price', '현재가')}
           {th('changeRate', '등락률')}
           {th('high60Rate', '60일 신고가대비')}
+          {th('ratio', '거래대금/시가총액')}
           {th('tradingVolume', '거래대금(백만원)')}
         </tr>
       </thead>
       <tbody>
         {sorted.map(s => (
           <tr key={s.code} className={s.changeRate >= 29.9 ? 'limit-up' : ''} onClick={() => onRowClick(s)}>
-            <td>{s.ratio != null ? s.ratio.toFixed(2) : '-'}</td>
             <td>{s.rank}</td>
             <td>{s.name}<span className="td-code">{s.code}</span></td>
             <td>{fmtN(s.price)}</td>
             <td className={rc(s.changeRate)}>{s.changeRate >= 0 ? '+' : ''}{s.changeRate.toFixed(2)}%</td>
             <td>{s.high60Rate != null ? `${s.high60Rate.toFixed(2)}%` : '-'}</td>
+            <td>{s.ratio != null ? s.ratio.toFixed(2) : '-'}</td>
             <td>{fmtN(s.tradingVolume)}</td>
           </tr>
         ))}

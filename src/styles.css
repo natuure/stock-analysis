@@ -282,14 +282,6 @@ tbody td {
 tbody td:first-child  { text-align: center; color: var(--c-muted); font-weight: 600; font-size: 12px; }
 tbody td:nth-child(2) { text-align: left; font-weight: 600; }
 .td-code { display: block; font-size: 10px; color: var(--c-muted); font-weight: 400; }
-
-/* 거래대금 표만 맨 앞에 거래대금/시가총액 열이 있어 순위·종목명이 한 칸씩 밀림 */
-.vol-table thead th:first-child  { text-align: right; width: auto; }
-.vol-table tbody td:first-child  { text-align: right; color: var(--c-heading); font-weight: 400; font-size: 13px; }
-.vol-table thead th:nth-child(2) { text-align: center; width: 42px; }
-.vol-table tbody td:nth-child(2) { text-align: center; color: var(--c-muted); font-weight: 600; font-size: 12px; }
-.vol-table thead th:nth-child(3) { text-align: left; }
-.vol-table tbody td:nth-child(3) { text-align: left; font-weight: 600; }
 .up   { color: var(--c-up)   !important; }
 .down { color: var(--c-down) !important; }
 .flat { color: var(--c-flat) !important; }
