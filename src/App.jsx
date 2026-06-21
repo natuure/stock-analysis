@@ -10,7 +10,6 @@ import StockDetailModal from './components/StockDetailModal';
 import {
   dateToISO, CACHE_VERSION,
   saveAnalysisToStorage, loadAnalysisFromStorage,
-  loadWeeklyFromStorage,
 } from './utils';
 
 export default function App() {
@@ -134,9 +133,11 @@ export default function App() {
             onDayClick={loadAnalysis}
             serverDates={serverDates}
             weeklyIdx={weeklyIdx}
+            weekSelected={weekSelected}
             onWeekClick={(weekKey) => {
-              const data = loadWeeklyFromStorage(weekKey);
-              if (data) setAnalysisExcel(data.rows);
+              setVol(null); setRate(null); setDate(null);
+              setIndices(null); setAnalysisExcel(null); setAiAnalysis(null);
+              setCalSelected(null); setSelectedStock(null);
               const idx = weeklyIdx[weekKey];
               setWeekSelected(idx && idx.kospi && idx.kosdaq ? weekKey : null);
             }}

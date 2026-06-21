@@ -369,7 +369,7 @@ tbody td:nth-child(2) { text-align: left; font-weight: 600; }
 }
 .cal-nav:hover { background: var(--c-surface); color: var(--c-heading); }
 .cal-nav svg { width: 16px; height: 16px; }
-.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.cal-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 2px; }
 .cal-dow {
   text-align: center; font-size: 11px; font-weight: 700;
   color: var(--c-muted); padding: 4px 0 8px;
@@ -392,6 +392,17 @@ tbody td:nth-child(2) { text-align: left; font-weight: 600; }
 .cal-day.selected { background: var(--c-primary); color: #fff; }
 .cal-day.selected::after { background: rgba(255,255,255,.8); }
 .cal-day.has-data:not(.selected):hover { background: var(--c-surface); }
+
+.cal-week-wrap { display: flex; justify-content: center; padding: 2px 0; }
+.cal-week {
+  min-width: 32px; height: 32px; padding: 0 6px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: var(--r-sm); font-size: 11px; font-weight: 700;
+  color: var(--c-muted); transition: background .15s;
+}
+.cal-week.has-data { color: var(--c-primary); cursor: pointer; }
+.cal-week.has-data:not(.selected):hover { background: var(--c-surface); }
+.cal-week.selected { background: var(--c-primary); color: #fff; }
 
 /* ── Responsive ───────────────────────────────────────────── */
 @media (max-width: 1023px) {
