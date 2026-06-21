@@ -157,10 +157,19 @@ def get_kis_token(db):
     return data['access_token']
 
 
-def _fetch_kis_itemchartprice(token, code, mrkt_code, d1, d2, max_retries=3):
-    """inquire-daily-itemchartprice 1회 호출(+재시도). KIS 호출 제한(EGW00201, "초당
-    거래건수를 초과하였습니다")에 걸리면 1초 쉬고 재시도한다 — 호출 사이에 sleep을 둬도
-    종목 300여 개를 빠르게 돌리면 실제로 종종 걸림(직접 확인함)."""
+def fetch_kis_consolidated(token, code, date_str, lookback_days=10, max_retries=3):
+    """FID_COND_MRKT_DIV_CODE=UN(KRX+NXT 통합)으로 최근 lookback_days치 일별 시세를
+    오래된→최신 순으로 반환한다. UN 모드는 전일대비 필드를 안 줘서(직접 확인함), 호출하는
+    쪽에서 연속된 두 행의 종가를 비교해 등락률을 계산해야 한다.
+    NXT에서 전혀 거래되지 않는 종목(우선주 등 일부)은 UN이 빈 배열을 반환한다(직접 확인함)
+    — 이 경우 J로 다시 KIS를 호출해도 FDR과 같은 KRX 단독 값일 뿐이라(직접 검증함),
+    별도 재조회 없이 빈 배열을 그대로 반환해서 enrich_with_kis가 이미 갖고 있는 FDR 값으로
+    바로 폴백하게 한다 — UN에 데이터가 있는 종목만 KIS를 쓰고, 없는 종목은 KIS를 한 번 더
+    부르지 않는다.
+    KIS 호출 제한(EGW00201, "초당 거래건수를 초과하였습니다")에 걸리면 1초 쉬고 재시도한다
+    — 호출 사이에 sleep을 둬도 종목 300여 개를 빠르게 돌리면 실제로 종종 걸림(직접 확인함)."""
+    d2 = datetime.strptime(date_str, '%Y-%m-%d')
+    d1 = d2 - timedelta(days=lookback_days)
     headers = {
         'Content-Type': 'application/json; charset=UTF-8',
         'authorization': f'Bearer {token}',
@@ -170,7 +179,7 @@ def _fetch_kis_itemchartprice(token, code, mrkt_code, d1, d2, max_retries=3):
         'custtype': 'P',
     }
     params = {
-        'FID_COND_MRKT_DIV_CODE': mrkt_code,
+        'FID_COND_MRKT_DIV_CODE': 'UN',
         'FID_INPUT_ISCD': code,
         'FID_INPUT_DATE_1': d1.strftime('%Y%m%d'),
         'FID_INPUT_DATE_2': d2.strftime('%Y%m%d'),
@@ -188,26 +197,11 @@ def _fetch_kis_itemchartprice(token, code, mrkt_code, d1, d2, max_retries=3):
             time.sleep(1)
             continue
         if not r.ok or data.get('rt_cd') != '0':
-            raise RuntimeError(f'KIS 시세 조회 실패({code}, {mrkt_code}): {data.get("msg1")}')
+            raise RuntimeError(f'KIS 통합 시세 조회 실패({code}): {data.get("msg1")}')
         rows = [row for row in (data.get('output2') or []) if row.get('stck_bsop_date')]
         rows.sort(key=lambda row: row['stck_bsop_date'])
         return rows
-    raise RuntimeError(f'KIS 호출 제한으로 재시도 끝까지 실패({code}, {mrkt_code}): {data.get("msg1")}')
-
-
-def fetch_kis_consolidated(token, code, date_str, lookback_days=10):
-    """FID_COND_MRKT_DIV_CODE=UN(KRX+NXT 통합)으로 최근 lookback_days치 일별 시세를
-    오래된→최신 순으로 반환한다. UN 모드는 전일대비 필드를 안 줘서(직접 확인함), 호출하는
-    쪽에서 연속된 두 행의 종가를 비교해 등락률을 계산해야 한다.
-    NXT에서 전혀 거래되지 않는 종목(우선주 등 일부)은 UN이 빈 배열을 반환하는 걸 직접
-    확인했음 — 이 경우 J(KRX 단독)로 재조회한다(NXT 거래가 없으니 KRX 단독이 곧 진짜
-    통합값과 같음)."""
-    d2 = datetime.strptime(date_str, '%Y-%m-%d')
-    d1 = d2 - timedelta(days=lookback_days)
-    rows = _fetch_kis_itemchartprice(token, code, 'UN', d1, d2)
-    if not rows:
-        rows = _fetch_kis_itemchartprice(token, code, 'J', d1, d2)
-    return rows
+    raise RuntimeError(f'KIS 호출 제한으로 재시도 끝까지 실패({code}): {data.get("msg1")}')
 
 
 def enrich_with_kis(df, date_str):
