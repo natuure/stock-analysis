@@ -83,18 +83,13 @@ function CandleChart({ candles, maLines }) {
   );
 }
 
-export default function StockDetailModal({ open, code, name, dateISO, onClose }) {
+export default function StockChartPanel({ code, dateISO }) {
   const [candles, setCandles] = useState(null);
   const [error,   setError]   = useState(null);
   const [period,  setPeriod]  = useState('D');
 
   useEffect(() => {
-    if (!open || !code) return;
-    setPeriod('D'); // 종목이 바뀌면 일봉으로 초기화 (이미 'D'면 상태 변화 없어 재요청 없음)
-  }, [open, code]);
-
-  useEffect(() => {
-    if (!open || !code) return;
+    if (!code) return;
     setCandles(null);
     setError(null);
     fetch(`/api/candles?symbol=${code}&date=${dateISO}&period=${period}`)
@@ -104,9 +99,7 @@ export default function StockDetailModal({ open, code, name, dateISO, onClose })
         setCandles(data.candles || []);
       })
       .catch(e => setError(e.message));
-  }, [open, code, dateISO, period]);
-
-  if (!open) return null;
+  }, [code, dateISO, period]);
 
   const activeTab = PERIOD_TABS.find(t => t.key === period);
 
@@ -115,45 +108,37 @@ export default function StockDetailModal({ open, code, name, dateISO, onClose })
   const changeRate = last && prevClose ? ((parseFloat(last.closePrice) - prevClose) / prevClose) * 100 : null;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-panel" onClick={e => e.stopPropagation()}>
-        <div className="modal-head">
-          <div className="modal-title">{name}<span className="td-code">{code}</span></div>
-          <button className="modal-close" onClick={onClose}>✕</button>
-        </div>
-        <div className="modal-body">
-          <div className="period-tabs">
-            {PERIOD_TABS.map(tab => (
-              <button
-                key={tab.key}
-                className={`period-tab${period === tab.key ? ' active' : ''}`}
-                onClick={() => setPeriod(tab.key)}
-              >{tab.label}</button>
+    <div className="chart-panel-body">
+      <div className="period-tabs">
+        {PERIOD_TABS.map(tab => (
+          <button
+            key={tab.key}
+            className={`period-tab${period === tab.key ? ' active' : ''}`}
+            onClick={() => setPeriod(tab.key)}
+          >{tab.label}</button>
+        ))}
+      </div>
+      {error && <div className="chart-state">차트를 불러오지 못했습니다 ({error})</div>}
+      {!error && !candles && <div className="chart-state">불러오는 중...</div>}
+      {!error && candles && candles.length === 0 && <div className="chart-state">캔들 데이터가 없습니다</div>}
+      {!error && candles && candles.length > 0 && (
+        <>
+          <div className="chart-summary">
+            <span className="chart-price">{fmtN(last.closePrice)}</span>
+            {changeRate !== null && (
+              <span className={rc(changeRate)}>{changeRate >= 0 ? '+' : ''}{changeRate.toFixed(2)}%</span>
+            )}
+          </div>
+          <div className="candle-legend">
+            {activeTab.maLines.map(line => (
+              <span className="candle-legend-item" key={line.period}>
+                <i style={{ background: line.color }} />{line.label}
+              </span>
             ))}
           </div>
-          {error && <div className="modal-state">차트를 불러오지 못했습니다 ({error})</div>}
-          {!error && !candles && <div className="modal-state">불러오는 중...</div>}
-          {!error && candles && candles.length === 0 && <div className="modal-state">캔들 데이터가 없습니다</div>}
-          {!error && candles && candles.length > 0 && (
-            <>
-              <div className="modal-summary">
-                <span className="modal-price">{fmtN(last.closePrice)}</span>
-                {changeRate !== null && (
-                  <span className={rc(changeRate)}>{changeRate >= 0 ? '+' : ''}{changeRate.toFixed(2)}%</span>
-                )}
-              </div>
-              <div className="candle-legend">
-                {activeTab.maLines.map(line => (
-                  <span className="candle-legend-item" key={line.period}>
-                    <i style={{ background: line.color }} />{line.label}
-                  </span>
-                ))}
-              </div>
-              <CandleChart candles={candles} maLines={activeTab.maLines} />
-            </>
-          )}
-        </div>
-      </div>
+          <CandleChart candles={candles} maLines={activeTab.maLines} />
+        </>
+      )}
     </div>
   );
 }

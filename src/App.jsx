@@ -5,7 +5,6 @@ import Calendar from './components/Calendar';
 import IndexSummary from './components/IndexSummary';
 import Analysis from './components/Analysis';
 import Tables from './components/Tables';
-import StockDetailModal from './components/StockDetailModal';
 import {
   dateToISO, CACHE_VERSION,
   saveAnalysisToStorage, loadAnalysisFromStorage,
@@ -32,7 +31,6 @@ export default function App() {
   const [serverDates, setServerDates] = useState([]);
   const [weeklyIdx,   setWeeklyIdx]   = useState({});
   const [weekSelected, setWeekSelected] = useState(null);
-  const [selectedStock, setSelectedStock] = useState(null);
 
   const volRef  = useRef(null);
   const rateRef = useRef(null);
@@ -136,7 +134,7 @@ export default function App() {
             onWeekClick={(weekKey) => {
               setVol(null); setRate(null); setDate(null);
               setIndices(null); setAnalysisExcel(null); setAiAnalysis(null);
-              setCalSelected(null); setSelectedStock(null);
+              setCalSelected(null);
               const idx = weeklyIdx[weekKey];
               setWeekSelected(idx && idx.kospi && idx.kosdaq ? weekKey : null);
             }}
@@ -157,7 +155,7 @@ export default function App() {
                 tab={tab}
                 onSort={handleSort}
                 onTab={setTab}
-                onRowClick={setSelectedStock}
+                dateISO={dateToISO(date)}
               />
             </main>
           )}
@@ -165,14 +163,6 @@ export default function App() {
       )}
       {topTab === 'stock'    && <div className="tab-placeholder">종목 분석 — 준비 중입니다</div>}
       {topTab === 'screener' && <div className="tab-placeholder">조건 검색 — 준비 중입니다</div>}
-
-      <StockDetailModal
-        open={!!selectedStock}
-        code={selectedStock?.code}
-        name={selectedStock?.name}
-        dateISO={dateToISO(date)}
-        onClose={() => setSelectedStock(null)}
-      />
     </div>
   );
 }

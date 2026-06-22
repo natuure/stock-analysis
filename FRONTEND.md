@@ -46,10 +46,15 @@
 - 60일 신고가대비(`high60Rate`): 항상 0% 이하(0 = 60일 신고가), 데이터 없으면 '-'
   ([DATA_PIPELINE.md](DATA_PIPELINE.md) 참고)
 - 상한가 행: `limit-up` 클래스 (연한 빨강 배경)
-- 행 클릭 → `onRowClick` → `StockDetailModal` 오픈
+- 행 클릭 → 그 표 내부의 `expandedCode` state 토글 → 클릭한 행 바로 아래에 인라인 아코디언
+  행(`<tr class="chart-row">`, colSpan으로 표 전체 폭)으로 차트 패널 표시. 같은 행 재클릭 시
+  접힘. 거래대금·등락률 표는 각각 독립된 펼침 상태를 가짐(전역 공유 아님 — 2026-06-22 모달에서
+  전환)
 
-### StockDetailModal.jsx
-- 거래대금·등락률 표의 종목 행 클릭 시 오버레이 모달로 표시
+### StockChartPanel.jsx
+- 거래대금·등락률 표의 종목 행 클릭 시 그 행 바로 아래에 인라인으로 펼쳐짐(모달 아님).
+  날짜/주간이 바뀌면(`vol`/`rate` 데이터 변경) 펼쳐진 행은 자동으로 접힘(VolTable/RateTable
+  내부 `useEffect`)
 - `/api/candles?symbol=&date=&period=`로 일봉/주봉 조회 (KIS Open API 실시간, 실패 시 토스 캐시 폴백
   — [DATA_PIPELINE.md](DATA_PIPELINE.md) 참고) → SVG **OHLC 바차트**로 직접 렌더링 (차트 라이브러리 미사용)
   - 양봉(상승) 검정 `#000000`, 음봉(하락) 빨강 `#f04452` — 이 차트 전용 색상, 전역 `--c-up`/`--c-down`과는 무관

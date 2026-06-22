@@ -36,22 +36,9 @@ function AiCard({ item }) {
         <span className="a-name">{item.종목명}</span>
         {item.테마섹터 && <span className="a-theme">{item.테마섹터}</span>}
       </div>
-      {item.한줄요약 && (
-        <div className="a-block">
-          <div className="a-label">요약</div>
-          <div className="a-text">{item.한줄요약}</div>
-        </div>
-      )}
       {item.상승원인 && (
         <div className="a-block">
-          <div className="a-label">원인</div>
           <div className="a-text">{item.상승원인}</div>
-        </div>
-      )}
-      {item.트리거 && (
-        <div className="a-block">
-          <div className="a-label">트리거</div>
-          <div className="a-text">{item.트리거}</div>
         </div>
       )}
     </div>

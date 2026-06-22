@@ -1,11 +1,17 @@
+import { Fragment, useState, useEffect } from 'react';
 import { fmtN, rc } from '../utils';
+import StockChartPanel from './StockChartPanel';
 
 function SortIcon({ col, sort }) {
   if (sort.col !== col) return <i className="sort-ic">↕</i>;
   return <i className="sort-ic">{sort.dir === 'asc' ? '↑' : '↓'}</i>;
 }
 
-function VolTable({ vol, sort, onSort, onRowClick }) {
+function VolTable({ vol, sort, onSort, dateISO }) {
+  const [expandedCode, setExpandedCode] = useState(null);
+  useEffect(() => { setExpandedCode(null); }, [vol]);
+  const toggleRow = (code) => setExpandedCode(c => c === code ? null : code);
+
   const withRatio = vol.map(s => ({ ...s, ratio: s.marketCap > 0 ? s.tradingVolume / s.marketCap : null }));
   const sorted = [...withRatio].sort((a, b) => {
     const av = a[sort.col], bv = b[sort.col];
@@ -36,22 +42,35 @@ function VolTable({ vol, sort, onSort, onRowClick }) {
       </thead>
       <tbody>
         {sorted.map(s => (
-          <tr key={s.code} className={s.changeRate >= 29.9 ? 'limit-up' : ''} onClick={() => onRowClick(s)}>
-            <td>{s.rank}</td>
-            <td>{s.name}<span className="td-code">{s.code}</span></td>
-            <td>{fmtN(s.price)}</td>
-            <td className={rc(s.changeRate)}>{s.changeRate >= 0 ? '+' : ''}{s.changeRate.toFixed(2)}%</td>
-            <td>{s.high60Rate != null ? `${s.high60Rate.toFixed(2)}%` : '-'}</td>
-            <td>{s.ratio != null ? s.ratio.toFixed(2) : '-'}</td>
-            <td>{fmtN(s.tradingVolume)}</td>
-          </tr>
+          <Fragment key={s.code}>
+            <tr className={s.changeRate >= 29.9 ? 'limit-up' : ''} onClick={() => toggleRow(s.code)}>
+              <td>{s.rank}</td>
+              <td>{s.name}<span className="td-code">{s.code}</span></td>
+              <td>{fmtN(s.price)}</td>
+              <td className={rc(s.changeRate)}>{s.changeRate >= 0 ? '+' : ''}{s.changeRate.toFixed(2)}%</td>
+              <td>{s.high60Rate != null ? `${s.high60Rate.toFixed(2)}%` : '-'}</td>
+              <td>{s.ratio != null ? s.ratio.toFixed(2) : '-'}</td>
+              <td>{fmtN(s.tradingVolume)}</td>
+            </tr>
+            {expandedCode === s.code && (
+              <tr className="chart-row">
+                <td colSpan={7}>
+                  <StockChartPanel code={s.code} dateISO={dateISO} />
+                </td>
+              </tr>
+            )}
+          </Fragment>
         ))}
       </tbody>
     </table>
   );
 }
 
-function RateTable({ rate, sort, onSort, onRowClick }) {
+function RateTable({ rate, sort, onSort, dateISO }) {
+  const [expandedCode, setExpandedCode] = useState(null);
+  useEffect(() => { setExpandedCode(null); }, [rate]);
+  const toggleRow = (code) => setExpandedCode(c => c === code ? null : code);
+
   const sorted = [...rate].sort((a, b) => {
     const av = a[sort.col], bv = b[sort.col];
     if (typeof av === 'string') return sort.dir === 'asc' ? av.localeCompare(bv, 'ko') : bv.localeCompare(av, 'ko');
@@ -79,20 +98,29 @@ function RateTable({ rate, sort, onSort, onRowClick }) {
       </thead>
       <tbody>
         {sorted.map(s => (
-          <tr key={s.code} className={s.isUpperLimit ? 'limit-up' : ''} onClick={() => onRowClick(s)}>
-            <td>{s.rank}</td>
-            <td>{s.name}<span className="td-code">{s.code}</span></td>
-            <td>{fmtN(s.price)}</td>
-            <td className={rc(s.changeRate)}>{s.changeRate >= 0 ? '+' : ''}{s.changeRate.toFixed(2)}%</td>
-            <td>{s.high60Rate != null ? `${s.high60Rate.toFixed(2)}%` : '-'}</td>
-          </tr>
+          <Fragment key={s.code}>
+            <tr className={s.isUpperLimit ? 'limit-up' : ''} onClick={() => toggleRow(s.code)}>
+              <td>{s.rank}</td>
+              <td>{s.name}<span className="td-code">{s.code}</span></td>
+              <td>{fmtN(s.price)}</td>
+              <td className={rc(s.changeRate)}>{s.changeRate >= 0 ? '+' : ''}{s.changeRate.toFixed(2)}%</td>
+              <td>{s.high60Rate != null ? `${s.high60Rate.toFixed(2)}%` : '-'}</td>
+            </tr>
+            {expandedCode === s.code && (
+              <tr className="chart-row">
+                <td colSpan={5}>
+                  <StockChartPanel code={s.code} dateISO={dateISO} />
+                </td>
+              </tr>
+            )}
+          </Fragment>
         ))}
       </tbody>
     </table>
   );
 }
 
-export default function Tables({ vol, rate, sortV, sortR, tab, onSort, onTab, onRowClick }) {
+export default function Tables({ vol, rate, sortV, sortR, tab, onSort, onTab, dateISO }) {
   return (
     <>
       <div className="seg-tabs">
@@ -102,11 +130,11 @@ export default function Tables({ vol, rate, sortV, sortR, tab, onSort, onTab, on
       <div className="tables-grid">
         <div className={`tbl-card${tab === 'r' ? ' mobile-hidden' : ''}`}>
           <div className="tbl-head"><div className="tbl-head-title">거래대금 상위 50위</div></div>
-          <div className="tbl-wrap"><VolTable vol={vol} sort={sortV} onSort={onSort} onRowClick={onRowClick} /></div>
+          <div className="tbl-wrap"><VolTable vol={vol} sort={sortV} onSort={onSort} dateISO={dateISO} /></div>
         </div>
         <div className={`tbl-card${tab === 'v' ? ' mobile-hidden' : ''}`}>
-          <div className="tbl-head"><div className="tbl-head-title">등락률 상위 50위</div></div>
-          <div className="tbl-wrap"><RateTable rate={rate} sort={sortR} onSort={onSort} onRowClick={onRowClick} /></div>
+          <div className="tbl-head"><div className="tbl-head-title">등락률 상위 50위 <span className="tbl-head-note">(거래대금 300억 이상)</span></div></div>
+          <div className="tbl-wrap"><RateTable rate={rate} sort={sortR} onSort={onSort} dateISO={dateISO} /></div>
         </div>
       </div>
     </>

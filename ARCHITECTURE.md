@@ -10,7 +10,7 @@ src/                                 api/getData.js                  MongoDB Atl
   components/                        api/getAnalysis.js                _id = "YYYY-MM-DD"
     Header, Calendar                   ai_analysis 조회                ai_analysis 컬렉션
     Tables, Analysis                 api/analyzeStocks.js               _id = "YYYY-MM-DD"
-    StockDetailModal                   Claude API 프록시 (미사용)       candles 컬렉션 (토스 캔들 캐시·폴백용)
+    StockChartPanel                    Claude API 프록시 (미사용)       candles 컬렉션 (토스 캔들 캐시·폴백용)
   utils.js                           api/candles.js                     _id = "종목코드_YYYY-MM-DD"
   styles.css                           KIS Open API 직접 호출(실시간)   kis_token 컬렉션 (KIS 접근토큰 캐시)
                                         → 실패 시에만 candles 캐시 폴백   _id = "token"
@@ -43,15 +43,15 @@ Python (로컬 실행, 고정 IP)
 │   └── candles.js           # GET ?symbol=&date= → KIS Open API 직접 호출(실시간), 실패 시 candles 캐시 폴백
 ├── src/
 │   ├── main.jsx
-│   ├── App.jsx              # 상태 관리 (selectedStock 추가 → StockDetailModal 연결)
+│   ├── App.jsx              # 상태 관리 (Tables에 dateISO 전달 — 차트 패널은 각 표 내부에서 자체 관리)
 │   ├── api.js               # 비어있음 (fetchSectors 제거됨)
 │   ├── utils.js             # normVol, normRate, 날짜 유틸
 │   ├── styles.css
 │   └── components/
 │       ├── Header.jsx
 │       ├── Calendar.jsx     # serverDates prop 추가 (MongoDB 날짜 표시), 주차(W##) 칸
-│       ├── Tables.jsx       # 거래대금·등락률 테이블, 행 클릭 시 onRowClick
-│       ├── StockDetailModal.jsx  # 종목 클릭 시 토스 API 일봉 캔들 차트 모달
+│       ├── Tables.jsx       # 거래대금·등락률 테이블, 행 클릭 시 그 표 내부에서 차트 패널을 인라인으로 펼침/접음(독립 상태)
+│       ├── StockChartPanel.jsx  # 종목 클릭 시 표 행 아래에 인라인으로 펼치는 일봉/주봉 캔들 차트 패널(모달 아님)
 │       └── Analysis.jsx     # ThemeTable + AiPanels + N파일
 ├── 뉴스분석.py              # FinanceDataReader 수집 + Naver 뉴스 + stock_data 저장
 ├── 저장분석.py              # ai_analysis MongoDB 저장
