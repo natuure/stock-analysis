@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect } from 'react';
+import { Fragment, useState, useEffect, useRef } from 'react';
 import { fmtN, rc } from '../utils';
 import StockChartPanel from './StockChartPanel';
 
@@ -7,7 +7,24 @@ function SortIcon({ col, sort }) {
   return <i className="sort-ic">{sort.dir === 'asc' ? '↑' : '↓'}</i>;
 }
 
-function VolTable({ vol, sort, onSort, dateISO }) {
+// 표가 좁은 화면에서 가로 스크롤될 때, 펼쳐진 차트는 카드 폭(스크롤 영향 없음)에
+// 맞춰 표시되도록 카드의 실제 렌더링 폭을 측정해 내려준다.
+function useCardWidth() {
+  const ref = useRef(null);
+  const [width, setWidth] = useState(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = () => setWidth(el.clientWidth);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, width];
+}
+
+function VolTable({ vol, sort, onSort, dateISO, cardWidth }) {
   const [expandedCode, setExpandedCode] = useState(null);
   useEffect(() => { setExpandedCode(null); }, [vol]);
   const toggleRow = (code) => setExpandedCode(c => c === code ? null : code);
@@ -55,7 +72,7 @@ function VolTable({ vol, sort, onSort, dateISO }) {
             {expandedCode === s.code && (
               <tr className="chart-row">
                 <td colSpan={7}>
-                  <StockChartPanel code={s.code} dateISO={dateISO} />
+                  <StockChartPanel code={s.code} dateISO={dateISO} maxWidth={cardWidth ? `${cardWidth}px` : undefined} />
                 </td>
               </tr>
             )}
@@ -66,7 +83,7 @@ function VolTable({ vol, sort, onSort, dateISO }) {
   );
 }
 
-function RateTable({ rate, sort, onSort, dateISO }) {
+function RateTable({ rate, sort, onSort, dateISO, cardWidth }) {
   const [expandedCode, setExpandedCode] = useState(null);
   useEffect(() => { setExpandedCode(null); }, [rate]);
   const toggleRow = (code) => setExpandedCode(c => c === code ? null : code);
@@ -109,7 +126,7 @@ function RateTable({ rate, sort, onSort, dateISO }) {
             {expandedCode === s.code && (
               <tr className="chart-row">
                 <td colSpan={5}>
-                  <StockChartPanel code={s.code} dateISO={dateISO} />
+                  <StockChartPanel code={s.code} dateISO={dateISO} maxWidth={cardWidth ? `${cardWidth}px` : undefined} />
                 </td>
               </tr>
             )}
@@ -121,6 +138,8 @@ function RateTable({ rate, sort, onSort, dateISO }) {
 }
 
 export default function Tables({ vol, rate, sortV, sortR, tab, onSort, onTab, dateISO }) {
+  const [cardRefV, cardWidthV] = useCardWidth();
+  const [cardRefR, cardWidthR] = useCardWidth();
   return (
     <>
       <div className="seg-tabs">
@@ -128,13 +147,13 @@ export default function Tables({ vol, rate, sortV, sortR, tab, onSort, onTab, da
         <button className={`seg-btn${tab === 'r' ? ' active' : ''}`} onClick={() => onTab('r')}>등락률</button>
       </div>
       <div className="tables-grid">
-        <div className={`tbl-card${tab === 'r' ? ' mobile-hidden' : ''}`}>
+        <div className={`tbl-card${tab === 'r' ? ' mobile-hidden' : ''}`} ref={cardRefV}>
           <div className="tbl-head"><div className="tbl-head-title">거래대금 상위 50위</div></div>
-          <div className="tbl-wrap"><VolTable vol={vol} sort={sortV} onSort={onSort} dateISO={dateISO} /></div>
+          <div className="tbl-wrap"><VolTable vol={vol} sort={sortV} onSort={onSort} dateISO={dateISO} cardWidth={cardWidthV} /></div>
         </div>
-        <div className={`tbl-card${tab === 'v' ? ' mobile-hidden' : ''}`}>
+        <div className={`tbl-card${tab === 'v' ? ' mobile-hidden' : ''}`} ref={cardRefR}>
           <div className="tbl-head"><div className="tbl-head-title">등락률 상위 50위 <span className="tbl-head-note">(거래대금 300억 이상)</span></div></div>
-          <div className="tbl-wrap"><RateTable rate={rate} sort={sortR} onSort={onSort} dateISO={dateISO} /></div>
+          <div className="tbl-wrap"><RateTable rate={rate} sort={sortR} onSort={onSort} dateISO={dateISO} cardWidth={cardWidthR} /></div>
         </div>
       </div>
     </>

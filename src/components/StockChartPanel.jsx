@@ -83,7 +83,7 @@ function CandleChart({ candles, maLines }) {
   );
 }
 
-export default function StockChartPanel({ code, dateISO }) {
+export default function StockChartPanel({ code, dateISO, maxWidth }) {
   const [candles, setCandles] = useState(null);
   const [error,   setError]   = useState(null);
   const [period,  setPeriod]  = useState('D');
@@ -108,7 +108,7 @@ export default function StockChartPanel({ code, dateISO }) {
   const changeRate = last && prevClose ? ((parseFloat(last.closePrice) - prevClose) / prevClose) * 100 : null;
 
   return (
-    <div className="chart-panel-body">
+    <div className="chart-panel-body" style={maxWidth ? { width: maxWidth } : undefined}>
       <div className="period-tabs">
         {PERIOD_TABS.map(tab => (
           <button

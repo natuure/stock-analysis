@@ -386,6 +386,10 @@ tbody tr.chart-row td { text-align: left; white-space: normal; padding: 0; }
   .mobile-hidden { display: none; }
 }
 
+/* 표가 가로 스크롤되더라도(좁은 화면에서 컬럼이 넘칠 때) 펼쳐진 차트는
+   카드 폭에 맞춰 고정 표시 — 폭은 JS에서 측정해 인라인 스타일로 지정 */
+.chart-panel-body { position: sticky; left: 0; z-index: 1; box-sizing: border-box; }
+
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ── Stock Chart Panel (표 행 인라인 아코디언) ───────────────── */

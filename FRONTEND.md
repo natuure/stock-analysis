@@ -11,6 +11,10 @@
 
 ### Header.jsx
 - 제목 + 현재 보고 있는 날짜 표시 (이제 `.app-top` 안에서 TopTabs와 함께 sticky)
+- 제목 텍스트는 "GM Investment"(2026-06-23, `header-title`만 변경) — 부제 줄(`header-sub`,
+  날짜/업로드 안내)은 그대로 유지. **TopTabs의 첫 번째 탭 이름("주식 거래대금·등락률 분석")과
+  브라우저 탭 타이틀(`index.html`)은 별개 요소라 안 바뀌었음** — 의도된 동작, 둘을 같은 텍스트로
+  맞추려는 작업이 아니라 헤더 브랜딩만 바꾸는 요청이었음
 
 ### Calendar.jsx
 - localStorage `analysis_dates` + MongoDB `serverDates` 합쳐서 초록 점 표시
@@ -53,6 +57,13 @@
   행(`<tr class="chart-row">`, colSpan으로 표 전체 폭)으로 차트 패널 표시. 같은 행 재클릭 시
   접힘. 거래대금·등락률 표는 각각 독립된 펼침 상태를 가짐(전역 공유 아님 — 2026-06-22 모달에서
   전환)
+- **모바일 차트 잘림 버그 수정** (2026-06-23): 좁은 화면에서는 `tbody td`가 `white-space: nowrap`
+  이라 표 자체가 카드 폭보다 넓어져 `.tbl-wrap`이 가로 스크롤된다. 펼쳐진 차트 행도 같은
+  `<td colSpan>` 안에 있어서 표가 넓어진 만큼 같이 넓어져 카드 밖으로 잘려 보이는 문제가 있었음
+  (표 셀의 `width`는 CSS만으로 줄일 수 없음 — 헤드리스 브라우저로 직접 재현·검증함). `Tables.jsx`의
+  `useCardWidth` 훅이 `ResizeObserver`로 `.tbl-card`의 실제 폭(표 오버플로 영향 없음)을 측정해
+  `StockChartPanel`에 `maxWidth`로 내려주고, `.chart-panel-body`에 `position: sticky; left: 0`을
+  줘서 표를 가로로 스크롤해도 차트는 항상 카드 폭에 맞춰 고정 표시됨
 
 ### StockChartPanel.jsx
 - 거래대금·등락률 표의 종목 행 클릭 시 그 행 바로 아래에 인라인으로 펼쳐짐(모달 아님).
@@ -87,3 +98,5 @@
 
 - 767px 이하: 거래대금·등락률 표 1열 + `seg-tabs`로 탭 전환
 - 768px 이상: 거래대금·등락률 표 2열(`tables-grid`)
+- 인라인 차트(`StockChartPanel`)는 폭이 표가 아니라 `.tbl-card` 측정값을 따르므로 767px 이하에서
+  표가 가로 스크롤돼도 잘리지 않음(위 Tables.jsx "모바일 차트 잘림 버그 수정" 참고)
