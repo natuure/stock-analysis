@@ -92,10 +92,20 @@ def load_corp_codes():
 def find_corp_code(name, corp_map):
     if name in corp_map:
         return corp_map[name]
+    # 대소문자만 다른 정확 일치(예: 'sk하이닉스' 입력 vs 'SK하이닉스' 정식명)를 부분일치보다
+    # 먼저 확인한다 — 안 그러면 짧은 회사명이 입력 문자열에 우연히 포함돼 잘못 매칭될 수 있음
+    # (직접 확인, 2026-06-25: 'sk하이닉스' → 부분일치만 썼을 때 전혀 무관한 '이닉스'(452400)에
+    # 매칭되고 실제 SK하이닉스(000660)는 매칭되지 않는 버그가 있었음).
+    name_lower = name.lower()
     for k, v in corp_map.items():
-        if name in k or k in name:
+        if k.lower() == name_lower:
             return v
-    return None
+    candidates = [(k, v) for k, v in corp_map.items() if name_lower in k.lower() or k.lower() in name_lower]
+    if not candidates:
+        return None
+    # 부분일치 후보가 여럿이면 입력값과 길이 차이가 가장 작은(가장 가까운) 회사명을 선택.
+    candidates.sort(key=lambda kv: abs(len(kv[0]) - len(name)))
+    return candidates[0][1]
 
 
 # ── KIS 현재가·시가총액·발행주식수 조회 ───────────────────────────────────────
