@@ -11,17 +11,20 @@ src/                                 api/getData.js                  MongoDB Atl
     Header, Calendar                   ai_analysis 조회                ai_analysis 컬렉션
     Tables, Analysis                 api/analyzeStocks.js               _id = "YYYY-MM-DD"
     StockChartPanel                    Claude API 프록시 (미사용)       candles 컬렉션 (토스 캔들 캐시·폴백용)
-  utils.js                           api/candles.js                     _id = "종목코드_YYYY-MM-DD"
-  styles.css                           KIS Open API 직접 호출(실시간)   kis_token 컬렉션 (KIS 접근토큰 캐시)
-                                        → 실패 시에만 candles 캐시 폴백   _id = "token"
-                                                                       weekly_indices 컬렉션
-                                                                         _id = "YYYY-W##"
+    StockAnalysis                     api/candles.js                     _id = "종목코드_YYYY-MM-DD"
+    CompanyOverviewView                 KIS Open API 직접 호출(실시간)  kis_token 컬렉션 (KIS 접근토큰 캐시)
+  utils.js                              → 실패 시에만 candles 캐시 폴백   _id = "token"
+  styles.css                          api/getCompanyOverview.js        weekly_indices 컬렉션
+                                         company_analysis 조회             _id = "YYYY-W##"
+                                         (목록/종목코드별 단건)          company_analysis 컬렉션
+                                                                          _id = "종목코드"
 
 Python (로컬 실행, 고정 IP)
   뉴스분석.py   ← FinanceDataReader 수집 + 토스 캔들 캐싱(폴백용) + Naver 뉴스 수집 + stock_data 저장
   저장분석.py   ← ai_analysis 저장
   주간분석.py   ← 코스피/코스닥 주간 변동률 계산 + weekly_indices 저장 (메인 흐름과 독립)
-  종목분석.py   ← DART+네이버로 단일 종목 데이터 수집(MongoDB 미사용, 웹앱과 무관, DATA_PIPELINE.md 참고)
+  종목분석.py   ← DART로 단일 종목 재무제표 수집 + MongoDB company_analysis 저장
+                  (웹앱 "종목 분석" 탭 검색용, DATA_PIPELINE.md 참고)
 ```
 
 - **GitHub 저장소**: https://github.com/natuure/stock-analysis.git
@@ -37,10 +40,11 @@ Python (로컬 실행, 고정 IP)
 ```
 /
 ├── api/
-│   ├── getData.js           # GET ?date= → stock_data 조회 / 날짜 목록 반환
-│   ├── getAnalysis.js       # GET ?date= → ai_analysis 조회
-│   ├── analyzeStocks.js     # Claude API 프록시 (현재 미사용)
-│   └── candles.js           # GET ?symbol=&date= → KIS Open API 직접 호출(실시간), 실패 시 candles 캐시 폴백
+│   ├── getData.js              # GET ?date= → stock_data 조회 / 날짜 목록 반환
+│   ├── getAnalysis.js          # GET ?date= → ai_analysis 조회
+│   ├── analyzeStocks.js        # Claude API 프록시 (현재 미사용)
+│   ├── candles.js              # GET ?symbol=&date= → KIS Open API 직접 호출(실시간), 실패 시 candles 캐시 폴백
+│   └── getCompanyOverview.js   # GET (code 없음) → 분석된 종목 목록 / GET ?code= → company_analysis 단건 조회
 ├── src/
 │   ├── main.jsx
 │   ├── App.jsx              # 상태 관리 (Tables에 dateISO 전달 — 차트 패널은 각 표 내부에서 자체 관리)
@@ -52,11 +56,13 @@ Python (로컬 실행, 고정 IP)
 │       ├── Calendar.jsx     # serverDates prop 추가 (MongoDB 날짜 표시), 주차(W##) 칸
 │       ├── Tables.jsx       # 거래대금·등락률 테이블, 행 클릭 시 그 표 내부에서 차트 패널을 인라인으로 펼침/접음(독립 상태)
 │       ├── StockChartPanel.jsx  # 종목 클릭 시 표 행 아래에 인라인으로 펼치는 일봉/주봉 캔들 차트 패널(모달 아님)
-│       └── Analysis.jsx     # ThemeTable + AiPanels + N파일
+│       ├── Analysis.jsx     # ThemeTable + AiPanels + N파일
+│       ├── StockAnalysis.jsx  # "종목 분석" 탭 — 종목명 검색(자동완성)창 + 기업개요/재무상태표/손익계산서/현금흐름표 4버튼
+│       └── CompanyOverviewView.jsx  # 기업개요 — PER/PBR/ROE/EV·EBITDA + 적정주가 슬라이더 4종 (data prop으로 받음)
 ├── 뉴스분석.py              # FinanceDataReader 수집 + Naver 뉴스 + stock_data 저장
 ├── 저장분석.py              # ai_analysis MongoDB 저장
 ├── 주간분석.py              # 코스피/코스닥 주간 변동률 → weekly_indices 저장
-├── 종목분석.py              # DART+네이버로 단일 종목 데이터 수집 → 종목분석결과/*.json (gitignore)
+├── 종목분석.py              # DART로 단일 종목 재무제표 수집 → 종목분석결과/*.json (gitignore) + MongoDB company_analysis 저장
 ├── requirements.txt         # pandas, finance-datareader, requests, pymongo[srv], python-dotenv
 ├── AI검색.md                # Naver API 쿼리 패턴 가이드
 ├── 데일리분석/              # (과거 HTS 엑셀 보관 폴더, 더 이상 스크립트가 사용하지 않음, gitignore 유지)
@@ -80,6 +86,7 @@ Python (로컬 실행, 고정 IP)
 | `candles` | 종목별 토스 일봉 캔들 캐시 (KIS 실패 시 폴백용) | `{ _id: "종목코드_YYYY-MM-DD", candles: [...] }` (해당일 거래대금/등락률 상위 종목만) |
 | `kis_token` | KIS 접근토큰 캐시 (1분당 1회 발급 제한 대응) | `{ _id: "token", accessToken, expiresAt }` 단일 문서 |
 | `weekly_indices` | 주간 코스피/코스닥 변동률 (주간분석.py가 채움) | `{ _id: "YYYY-W##", kospi: {...}, kosdaq: {...} }` |
+| `company_analysis` | 종목별 DART 재무제표 + KIS 현재가 (종목분석.py가 채움, "종목 분석" 탭용) | `{ _id: "종목코드", name, date, corp_code, quote, annual_financials, quarterly_financials, latest_report }` |
 
 > ⚠️ `wics_cache` 컬렉션은 삭제됨 (WICS 업종 분류 기능 제거)
 
@@ -93,6 +100,7 @@ Python (로컬 실행, 고정 IP)
 | `/api/getAnalysis` | GET | `?date=YYYY-MM-DD` → ai_analysis 반환 |
 | `/api/analyzeStocks` | POST | Claude API 프록시 (현재 미사용) |
 | `/api/candles` | GET | `?symbol=&date=` → KIS Open API로 일봉 캔들 85개 실시간 조회. 실패 시에만 MongoDB `candles`(토스 캐시) 폴백 |
+| `/api/getCompanyOverview` | GET | code 없음: company_analysis 전체 목록(`name`+`stock_code`, 검색 자동완성용) / `?code=종목코드`: 단건 조회 |
 
 ---
 
@@ -100,12 +108,12 @@ Python (로컬 실행, 고정 IP)
 
 | 변수 | 위치 | 용도 |
 |------|------|------|
-| `MONGODB_URI` | .env.local + Vercel | MongoDB Atlas 연결 |
+| `MONGODB_URI` | .env.local + Vercel | MongoDB Atlas 연결 (종목분석.py도 사용 — 없으면 company_analysis 저장만 건너뛰고 로컬 JSON은 정상 저장) |
 | `ANTHROPIC_API_KEY` | .env.local + Vercel | Claude API (analyzeStocks 미사용) |
-| `NAVER_CLIENT_ID` | .env.local | Naver 검색 API (뉴스분석.py, 종목분석.py) |
-| `NAVER_CLIENT_SECRET` | .env.local | Naver 검색 API (뉴스분석.py, 종목분석.py) |
+| `NAVER_CLIENT_ID` | .env.local | Naver 검색 API (뉴스분석.py) |
+| `NAVER_CLIENT_SECRET` | .env.local | Naver 검색 API (뉴스분석.py) |
 | `TOSS_CLIENT_ID` | .env.local | 토스증권 Open API OAuth2 (뉴스분석.py, IP 허용 목록 때문에 로컬에서만 사용) |
 | `TOSS_CLIENT_SECRET` | .env.local | 토스증권 Open API OAuth2 (뉴스분석.py, IP 허용 목록 때문에 로컬에서만 사용) |
-| `KIS_APP_KEY` | .env.local + Vercel | KIS(한국투자증권) Open API 인증 (api/candles.js, IP 제한 없어 Vercel에서 직접 호출) |
-| `KIS_APP_SECRET` | .env.local + Vercel | KIS(한국투자증권) Open API 인증 (api/candles.js, IP 제한 없어 Vercel에서 직접 호출) |
+| `KIS_APP_KEY` | .env.local + Vercel | KIS(한국투자증권) Open API 인증 (api/candles.js·뉴스분석.py·종목분석.py, IP 제한 없어 Vercel에서 직접 호출) |
+| `KIS_APP_SECRET` | .env.local + Vercel | KIS(한국투자증권) Open API 인증 (api/candles.js·뉴스분석.py·종목분석.py, IP 제한 없어 Vercel에서 직접 호출) |
 | `DART_API_KEY` | .env.local | DART Open API 인증 (종목분석.py 전용, 웹앱/Vercel과 무관) |

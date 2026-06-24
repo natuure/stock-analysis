@@ -1,17 +1,19 @@
 """
-DART 공식 Open API + 네이버 뉴스/웹 검색으로 단일 종목 분석용 원자료를 수집하는 스크립트.
-사용법: python 종목분석.py "종목명/현재가/시가총액/발행주식수/유통주식수"
-       예) python 종목분석.py "인지컨트롤스/6680/1056억/15809197/12237922"
+DART 공식 Open API로 단일 종목의 재무제표를 수집하는 스크립트.
+사용법: python 종목분석.py 종목명
+       예) python 종목분석.py 인지컨트롤스
 
-이 스크립트는 "/종목분석" 스킬의 0~1단계(입력 파싱, DART·네이버 데이터 수집)와
-2단계(밸류에이션 계산)까지만 자동화한다. 사업의 개요·매출/수주 현황 같은 서술형 본문이나
-임원/최대주주 상세, 최종 투자의견·SWOT·.docx 리포트 작성(3~4단계)은 이 결과 JSON을 보고
-Claude Code가 직접 작성한다(뉴스분석.py → "분석해줘" → 저장분석.py와 같은 분리 구조).
+오늘 날짜 기준 그 종목이 실제로 제출한 가장 최근 보고서(사업보고서/1분기/반기/3분기)를
+찾아, 거기에 맞춰 아래 4가지 경우 중 하나로 조회 범위를 정한다(Y = 최신 보고서의 연도):
+  - 최신이 Y년 1분기보고서 → Y-3,Y-2,Y-1년 사업보고서 + Y년 1분기보고서
+  - 최신이 Y년 반기보고서  → Y-3,Y-2,Y-1년 사업보고서 + Y년 1분기·반기보고서
+  - 최신이 Y년 3분기보고서 → Y-3,Y-2,Y-1년 사업보고서 + Y년 1분기·반기·3분기보고서
+  - 최신이 Y년 사업보고서  → Y-3,Y-2,Y-1,Y년 사업보고서 4개년 (분기 조회 불필요)
 
-결과: 종목분석결과/{종목명}_{YYYYMMDD}.json 저장
+결과: 종목분석결과/{종목명}_{YYYYMMDD}.json 저장 + MongoDB company_analysis 컬렉션 저장
+      (_id=종목코드) — 웹앱 "종목 분석" 탭에서 종목명 검색 시 바로 조회됨.
 """
 import os
-import re
 import io
 import sys
 import json
@@ -21,17 +23,24 @@ import requests
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from dotenv import load_dotenv
+from pymongo import MongoClient
 
 load_dotenv('.env.local')
 
 DART_API_KEY = os.getenv('DART_API_KEY')
-NAVER_ID     = os.getenv('NAVER_CLIENT_ID')
-NAVER_SECRET = os.getenv('NAVER_CLIENT_SECRET')
+KIS_APP_KEY = os.getenv('KIS_APP_KEY')
+KIS_APP_SECRET = os.getenv('KIS_APP_SECRET')
 
 DART_BASE = 'https://opendart.fss.or.kr/api'
+KIS_BASE = 'https://openapi.koreainvestment.com:9443'
 CORP_CODE_CACHE = '_dart_corp_codes.json'  # corpCode.xml은 전체 상장사 목록이라 매번 받지 않고 캐싱
 
-REPRT_CODES = [('11013', '1분기보고서'), ('11012', '반기보고서'), ('11014', '3분기보고서'), ('11011', '사업보고서')]
+# 분기 보고서는 한 해 안에서 진행 순서가 고정돼 있다(1분기→반기→3분기). 사업보고서(연간)는
+# 같은 '연도' 라벨이라도 실제 제출은 그 다음 해 3월이라 1분기~3분기보고서보다 항상 더 늦다.
+QUARTER_REPORTS = [('11013', '1분기보고서'), ('11012', '반기보고서'), ('11014', '3분기보고서')]
+ANNUAL_REPORT = ('11011', '사업보고서')
+# 최신 보고서 탐색 순서: 사업보고서(다음해 3월 제출이라 가장 늦음) → 3분기 → 반기 → 1분기
+LATEST_REPORT_PROBE_ORDER = [ANNUAL_REPORT, QUARTER_REPORTS[2], QUARTER_REPORTS[1], QUARTER_REPORTS[0]]
 
 # DART는 보고서 종류·기업마다 같은 항목을 다른 이름으로 태깅한다(직접 확인함, 2026-06-22):
 # 사업보고서(연간)는 '당기순이익', 분기·반기보고서는 회사에 따라 '분기순이익'/'반기순이익'을 씀.
@@ -39,33 +48,20 @@ REPRT_CODES = [('11013', '1분기보고서'), ('11012', '반기보고서'), ('11
 # '지배기업의 소유주에게 귀속되는 자본' 셋 다 쓰인다 — 후보를 넉넉히 둬야 누락이 줄어든다.
 NET_INCOME_NAMES = ['당기순이익', '당기순이익(손실)', '분기순이익', '분기순이익(손실)', '반기순이익', '반기순이익(손실)']
 PARENT_EQUITY_NAMES = ['지배기업의 소유주에게 귀속되는 자본', '지배기업소유주지분', '지배기업 소유주지분']
-
-
-# ── 입력 파싱 ─────────────────────────────────────────────────────────────────
-
-def parse_market_cap(raw):
-    """'1056억' / '1조 2000억' 형태를 억원 단위 숫자로 변환."""
-    s = raw.strip()
-    if '조' in s:
-        jo_part, _, eok_part = s.partition('조')
-        jo = float(re.sub(r'[^0-9.]', '', jo_part) or 0)
-        eok = float(re.sub(r'[^0-9.]', '', eok_part) or 0)
-        return jo * 10000 + eok
-    return float(re.sub(r'[^0-9.]', '', s) or 0)
-
-
-def parse_input(raw):
-    parts = raw.strip().split('/')
-    if len(parts) != 5:
-        raise ValueError('입력 형식: 종목명/현재가/시가총액/발행주식수/유통주식수')
-    name, price, marcap, shares_total, shares_float = parts
-    return {
-        'name': name.strip(),
-        'price': float(re.sub(r'[^0-9.]', '', price)),
-        'market_cap_eok': parse_market_cap(marcap),
-        'shares_total': int(re.sub(r'[^0-9]', '', shares_total)),
-        'shares_float': int(re.sub(r'[^0-9]', '', shares_float)),
-    }
+# 매출채권도 회사마다, 같은 회사라도 보고연도마다 이름이 다름(직접 확인, 2026-06-24): 대부분
+# '매출채권' 단독이지만 '매출채권및기타채권'/'매출채권 및 기타유동채권'처럼 기타수취채권과
+# 합쳐서 한 줄로 보고하는 경우도 있음(인지컨트롤스는 2023년엔 후자, 2025년엔 전자를 씀 — 같은
+# 회사도 연도별로 표기가 바뀔 수 있어 후보를 넉넉히 둬야 함). 장기성매출채권(비유동)은 의도적
+# 으로 후보에서 제외 — 같이 잡으면 단기/장기가 섞여 회전율 비중 계산이 왜곡됨.
+ACCOUNTS_RECEIVABLE_NAMES = ['매출채권', '매출채권및기타채권', '매출채권 및 기타채권', '매출채권 및 기타유동채권']
+# 재고자산도 유동/비유동 구분 없이 '재고자산' 하나로 보고하는 게 보통이지만, 유동자산 항목을
+# 세분화해 '유동재고자산'으로 쓰는 회사도 있음(직접 확인).
+INVENTORY_NAMES = ['재고자산', '유동재고자산']
+# 자본잉여금도 회사마다 다름: 삼성전자처럼 '자본잉여금' 합계줄 자체가 없고 세부 항목인
+# '주식발행초과금'만 보고하는 경우가 있음(직접 확인) — 이 경우 주식발행초과금을 대신 씀.
+CAPITAL_SURPLUS_NAMES = ['자본잉여금', '주식발행초과금']
+# 선수금은 2018년 수익인식기준(K-IFRS 1115) 도입 이후 '계약부채'로 대체 표기하는 회사도 있음.
+ADVANCE_RECEIPTS_NAMES = ['선수금', '계약부채']
 
 
 # ── DART corp_code 매핑 (종목명 → corp_code) ─────────────────────────────────
@@ -102,13 +98,55 @@ def find_corp_code(name, corp_map):
     return None
 
 
-# ── DART 데이터 수집 ──────────────────────────────────────────────────────────
+# ── KIS 현재가·시가총액·발행주식수 조회 ───────────────────────────────────────
+# 종목분석.py는 MongoDB를 쓰지 않으므로(뉴스분석.py와 달리) KIS 토큰을 캐싱하지 않고 매 실행마다
+# 새로 발급한다 — 수동으로 가끔 실행하는 스크립트라 1분당 1회 제한에 걸릴 일이 거의 없음.
 
-def fetch_company_overview(corp_code):
-    r = requests.get(f'{DART_BASE}/company.json', params={'crtfc_key': DART_API_KEY, 'corp_code': corp_code}, timeout=10)
+def get_kis_token():
+    r = requests.post(f'{KIS_BASE}/oauth2/tokenP', headers={
+        'Content-Type': 'application/json; charset=UTF-8',
+    }, json={
+        'grant_type': 'client_credentials',
+        'appkey': KIS_APP_KEY,
+        'appsecret': KIS_APP_SECRET,
+    }, timeout=10)
+    r.raise_for_status()
+    return r.json()['access_token']
+
+
+def fetch_kis_quote(token, stock_code):
+    """KIS 주식현재가 시세(inquire-price)로 현재가·시가총액·발행주식수를 조회한다.
+    FID_COND_MRKT_DIV_CODE=UN(KRX+NXT 통합)으로 호출 — KRX 단독(J)과 비교해 직접 검증함
+    (2026-06-25, 삼성전자: J 현재가 340,500원/거래대금 15.8조 vs UN 339,500원/27.4조로
+    NXT 체결분 반영 확인). 시가총액은 KIS가 주는 hts_avls를 안 쓰고 (현재가×상장주식수)로
+    직접 계산함 — hts_avls의 단위 표기(공식 문서상 백만원)를 그대로 적용하면 직접 계산한
+    값과 100배 차이가 나는 걸 확인해서(2026-06-25), 단위가 불확실한 필드 대신 이미 알고
+    있는 두 값(현재가·상장주식수)으로 직접 계산하는 쪽을 택함."""
+    r = requests.get(f'{KIS_BASE}/uapi/domestic-stock/v1/quotations/inquire-price', headers={
+        'Content-Type': 'application/json; charset=UTF-8',
+        'authorization': f'Bearer {token}',
+        'appkey': KIS_APP_KEY,
+        'appsecret': KIS_APP_SECRET,
+        'tr_id': 'FHKST01010100',
+        'custtype': 'P',
+    }, params={
+        'FID_COND_MRKT_DIV_CODE': 'UN',
+        'FID_INPUT_ISCD': stock_code,
+    }, timeout=10)
     data = r.json()
-    return data if data.get('status') == '000' else None
+    if data.get('rt_cd') != '0':
+        raise RuntimeError(f'KIS 현재가 조회 실패: {data.get("msg1")}')
+    o = data['output']
+    price = float(o['stck_prpr'])
+    shares = int(o['lstn_stcn'])
+    return {
+        'price': price,
+        'marketCap_억원': price * shares / 100_000_000,
+        'sharesOutstanding': shares,
+    }
 
+
+# ── DART 재무제표 조회 ────────────────────────────────────────────────────────
 
 def fetch_financial_statement(corp_code, bsns_year, reprt_code, fs_div='CFS'):
     """단일회사 전체 재무제표. 연결(CFS) 기준 데이터가 없으면 별도(OFS)로 재시도."""
@@ -153,15 +191,45 @@ def extract_account_like(items, keyword, sj_div='BS'):
     return total if found else None
 
 
-def fetch_annual_financials(corp_code, today_year):
-    """최근 3개 사업연도 재무제표(사업보고서 기준)."""
-    years = {}
-    for year in (today_year - 1, today_year - 2, today_year - 3):
-        items, fs_div = fetch_financial_statement(corp_code, year, '11011', 'CFS')
+def find_latest_report(corp_code, today):
+    """오늘 기준 실제 제출된 가장 최근 사업/분기/반기보고서를 찾는다(연도 내림차순, 같은
+    연도 안에서는 LATEST_REPORT_PROBE_ORDER 순서로 실제 DART 응답 존재 여부를 확인).
+    아직 제출 안 된(미래) 보고서는 DART가 빈 응답을 주므로 자연히 건너뛰어진다."""
+    for year in (today.year, today.year - 1, today.year - 2):
+        for code, label in LATEST_REPORT_PROBE_ORDER:
+            items, _ = fetch_financial_statement(corp_code, year, code, 'CFS')
+            time.sleep(0.2)
+            if items:
+                return year, code, label
+    return None, None, None
+
+
+def build_fetch_plan(latest_year, latest_code):
+    """최신 보고서 종류에 따라 조회할 (연간 사업보고서 연도 목록, 올해 분기보고서 목록)을 정한다.
+    latest_year를 Y라 하면:
+      - 최신이 Y년 1분기보고서   → Y-3,Y-2,Y-1년 사업보고서 + Y년 1분기보고서
+      - 최신이 Y년 반기보고서    → Y-3,Y-2,Y-1년 사업보고서 + Y년 1분기·반기보고서
+      - 최신이 Y년 3분기보고서   → Y-3,Y-2,Y-1년 사업보고서 + Y년 1분기·반기·3분기보고서
+      - 최신이 Y년 사업보고서    → Y-3,Y-2,Y-1,Y년 사업보고서 (4개년, 분기 조회는 불필요)
+    """
+    annual_years = [latest_year - 3, latest_year - 2, latest_year - 1]
+    if latest_code == ANNUAL_REPORT[0]:
+        annual_years.append(latest_year)
+        return sorted(annual_years), []
+    idx = next(i for i, (code, _) in enumerate(QUARTER_REPORTS) if code == latest_code)
+    quarters = [(latest_year, code, label) for code, label in QUARTER_REPORTS[:idx + 1]]
+    return sorted(annual_years), quarters
+
+
+def fetch_annual_financials(corp_code, years):
+    """사업보고서(연간) 재무제표. `years`에 지정된 연도만 조회한다."""
+    annual = {}
+    for year in years:
+        items, fs_div = fetch_financial_statement(corp_code, year, ANNUAL_REPORT[0], 'CFS')
         if not items:
             print(f'  {year}년 사업보고서 없음, 건너뜀')
             continue
-        years[str(year)] = {
+        annual[str(year)] = {
             'fs_div': fs_div,
             '매출액': extract_account(items, ['매출액', '영업수익']),
             '영업이익': extract_account(items, ['영업이익', '영업이익(손실)']),
@@ -174,33 +242,29 @@ def fetch_annual_financials(corp_code, today_year):
             '자본총계': extract_account(items, ['자본총계']),
             '지배기업소유주지분': extract_account(items, PARENT_EQUITY_NAMES),
             '현금및현금성자산': extract_account(items, ['현금및현금성자산']),
+            '단기금융상품': extract_account(items, ['단기금융상품']),
             '차입금_추정': extract_account_like(items, '차입금'),
             '감가상각비': extract_account(items, ['감가상각비']),
+            '무형자산': extract_account(items, ['무형자산']),
+            '유형자산': extract_account(items, ['유형자산']),
+            '재고자산': extract_account(items, INVENTORY_NAMES),
+            '매출채권': extract_account(items, ACCOUNTS_RECEIVABLE_NAMES),
+            '선수금': extract_account(items, ADVANCE_RECEIPTS_NAMES),
+            '자본금': extract_account(items, ['자본금']),
+            '자본잉여금': extract_account(items, CAPITAL_SURPLUS_NAMES),
+            '이익잉여금': extract_account(items, ['이익잉여금', '이익잉여금(결손금)']),
         }
         time.sleep(0.2)
-    return years
+    return annual
 
 
-REPRT_PERIOD_ORDER = {'11013': 1, '11012': 2, '11014': 3, '11011': 4}  # 1분기<반기<3분기<사업보고서
-
-
-def fetch_recent_quarters(corp_code, today, count=5):
-    """오늘 기준으로 거슬러 올라가며 최근 N개 분기/반기/사업보고서를 찾는다.
-    아직 제출 안 된(미래) 보고서는 DART가 빈 응답을 주므로 자연히 건너뛰어진다."""
-    candidates = []
-    for year in (today.year, today.year - 1, today.year - 2):
-        for code, label in REPRT_CODES:
-            candidates.append((year, code, label))
-    # 분기말 기준 진짜 시간순으로 정렬해야 한다 — 단순히 리스트를 뒤집으면
-    # "연도 내림차순 + 분기 오름차순"이 되어 최신 분기가 맨 뒤로 밀리는 버그가 생김.
-    candidates.sort(key=lambda c: c[0] * 4 + REPRT_PERIOD_ORDER[c[1]], reverse=True)
-
+def fetch_quarters(corp_code, specs):
+    """올해 진행된 분기/반기보고서. `specs`: [(year, reprt_code, label), ...] (시간순)."""
     quarters = []
-    for year, code, label in candidates:
-        if len(quarters) >= count:
-            break
+    for year, code, label in specs:
         items, fs_div = fetch_financial_statement(corp_code, year, code, 'CFS')
         if not items:
+            print(f'  {year}년 {label} 없음, 건너뜀')
             continue
         quarters.append({
             'year': year, 'reprt_code': code, 'label': label, 'fs_div': fs_div,
@@ -208,199 +272,102 @@ def fetch_recent_quarters(corp_code, today, count=5):
             '영업이익': extract_account(items, ['영업이익', '영업이익(손실)']),
             '당기순이익': extract_account(items, NET_INCOME_NAMES),
             '영업활동현금흐름': extract_account(items, ['영업활동현금흐름', '영업활동으로인한현금흐름', '영업활동으로 인한 현금흐름']),
+            # 재무상태표 항목 — 분기말 시점 스냅샷이라 연간 데이터와 동일하게 매 보고서에 포함됨.
+            '자산총계': extract_account(items, ['자산총계']),
+            '부채총계': extract_account(items, ['부채총계']),
+            '자본총계': extract_account(items, ['자본총계']),
+            '현금및현금성자산': extract_account(items, ['현금및현금성자산']),
+            '단기금융상품': extract_account(items, ['단기금융상품']),
+            '무형자산': extract_account(items, ['무형자산']),
+            '유형자산': extract_account(items, ['유형자산']),
+            '재고자산': extract_account(items, INVENTORY_NAMES),
+            '매출채권': extract_account(items, ACCOUNTS_RECEIVABLE_NAMES),
+            '선수금': extract_account(items, ADVANCE_RECEIPTS_NAMES),
+            '자본금': extract_account(items, ['자본금']),
+            '자본잉여금': extract_account(items, CAPITAL_SURPLUS_NAMES),
+            '이익잉여금': extract_account(items, ['이익잉여금', '이익잉여금(결손금)']),
         })
         time.sleep(0.2)
     return quarters
-
-
-def fetch_recent_disclosures(corp_code, start_date, end_date):
-    r = requests.get(f'{DART_BASE}/list.json', params={
-        'crtfc_key': DART_API_KEY, 'corp_code': corp_code,
-        'bgn_de': start_date, 'end_de': end_date, 'page_count': 30,
-    }, timeout=10)
-    data = r.json()
-    if data.get('status') != '000':
-        return []
-    return [{
-        'rcept_no': d.get('rcept_no'), 'report_nm': d.get('report_nm'),
-        'rcept_dt': d.get('rcept_dt'), 'flr_nm': d.get('flr_nm'),
-    } for d in data.get('list', [])]
-
-
-# ── 네이버 검색 (뉴스분석.py와 동일한 호출 방식) ───────────────────────────────
-
-def _naver_search(kind, query, display=10, sort='date'):
-    if not NAVER_ID or not NAVER_SECRET:
-        return []
-    try:
-        r = requests.get(
-            f'https://openapi.naver.com/v1/search/{kind}.json',
-            params={'query': query, 'display': display, 'sort': sort, 'start': 1},
-            headers={'X-Naver-Client-Id': NAVER_ID, 'X-Naver-Client-Secret': NAVER_SECRET},
-            timeout=10,
-        )
-        data = r.json()
-        return data.get('items', [])
-    except Exception as e:
-        print(f'  [경고] 네이버 {kind} 검색 실패({query}): {e}')
-        return []
-
-
-def strip_html(s):
-    return re.sub(r'<[^>]+>', '', str(s or '')).replace('&quot;', '"').replace('&amp;', '&').strip()
-
-
-def fetch_news_and_web(name):
-    queries_news = [f'{name} 실적 수주 계약', f'{name} 전망 이슈 2026']
-    queries_web  = [f'{name} PER PBR ROE 밸류에이션 배당', f'{name} 임원 최대주주 주식보유 경력']
-    news = []
-    for q in queries_news:
-        for item in _naver_search('news', q, display=10):
-            news.append({'query': q, 'title': strip_html(item.get('title')), 'description': strip_html(item.get('description')), 'pubDate': item.get('pubDate')})
-    web = []
-    for q in queries_web:
-        for item in _naver_search('webkr', q, display=10):
-            web.append({'query': q, 'title': strip_html(item.get('title')), 'description': strip_html(item.get('description'))})
-    return news, web
-
-
-# ── 밸류에이션 계산 ───────────────────────────────────────────────────────────
-
-def compute_ttm_net_income(corp_code, quarters):
-    """trailing 12개월 순이익 = 최근 사업보고서(연간) 순이익 - 작년 동기 누적치 + 올해 동기 누적치.
-    DART의 분기·반기보고서 손익 계정은 연초부터의 '누적'치라서, 최근 보고서 4개를 그냥
-    더하면 사업보고서(12개월) + 3분기(9개월누적) + 반기(6개월누적) + 분기(3개월)처럼 중복
-    합산되어 크게 부풀려진다 — 표준 TTM 롤포워드 방식으로 계산해야 함."""
-    if not quarters:
-        return None
-    latest = quarters[0]
-    if latest.get('당기순이익') is None:
-        return None
-    if latest['reprt_code'] == '11011':  # 가장 최근 보고서가 이미 사업보고서면 그 값 자체가 TTM
-        return latest['당기순이익']
-
-    fy = next((q for q in quarters if q['reprt_code'] == '11011'), None)
-    if not fy or fy.get('당기순이익') is None:
-        return None
-
-    prior_items, _ = fetch_financial_statement(corp_code, latest['year'] - 1, latest['reprt_code'], 'CFS')
-    prior_ni = extract_account(prior_items, NET_INCOME_NAMES) if prior_items else None
-    if prior_ni is None:
-        return None
-    return fy['당기순이익'] - prior_ni + latest['당기순이익']
-
-
-def compute_valuation(info, annual, quarters, corp_code):
-    latest_year = max(annual.keys()) if annual else None
-    latest = annual.get(latest_year, {}) if latest_year else {}
-
-    net_income   = latest.get('당기순이익')
-    equity_owner = latest.get('지배기업소유주지분') or latest.get('자본총계')
-    op_income    = latest.get('영업이익')
-    cash         = latest.get('현금및현금성자산') or 0
-    borrowings   = latest.get('차입금_추정') or 0
-    dep          = latest.get('감가상각비') or 0
-
-    shares = info['shares_total']
-    price  = info['price']
-    market_cap_won = info['market_cap_eok'] * 100_000_000
-
-    eps_dart = latest.get('기본주당이익_DART')  # DART가 직접 보고하는 주당이익(가중평균주식수 반영, 더 정확)
-    eps = eps_dart if eps_dart else (net_income / shares if net_income and shares else None)
-    bps = equity_owner / shares if equity_owner and shares else None
-    per = price / eps if eps and eps > 0 else None
-    pbr = price / bps if bps and bps > 0 else None
-    roe = (net_income / equity_owner * 100) if net_income and equity_owner else None
-
-    ttm_net_income = compute_ttm_net_income(corp_code, quarters)
-    ttm_eps = ttm_net_income / shares if ttm_net_income and shares else None
-
-    net_debt = (borrowings - cash) if (borrowings or cash) else None
-    ev = market_cap_won + net_debt if net_debt is not None else None
-    ebitda = (op_income + dep) if op_income is not None else None
-    ev_ebitda = ev / ebitda if ev and ebitda else None
-
-    graham = (22.5 * eps * bps) ** 0.5 if eps and bps and eps > 0 and bps > 0 else None
-
-    return {
-        'latest_year': latest_year,
-        'EPS': eps, 'BPS': bps, 'PER': per, 'PBR': pbr, 'ROE(%)': roe,
-        'TTM_EPS': ttm_eps,
-        '순차입금_추정': net_debt, 'EV_추정': ev, 'EBITDA_추정': ebitda, 'EV_EBITDA_추정': ev_ebitda,
-        'Graham_Number': graham,
-        '참고': 'EV/EBITDA·순차입금·Graham Number는 공개 계정명 매칭 기반 추정치 — '
-                '리포트 작성 시 사업보고서 원문으로 교차 확인 권장',
-    }
 
 
 # ── 메인 ─────────────────────────────────────────────────────────────────────
 
 def main():
     if len(sys.argv) < 2:
-        print('사용법: python 종목분석.py "종목명/현재가/시가총액/발행주식수/유통주식수"')
-        print('예시: python 종목분석.py "인지컨트롤스/6680/1056억/15809197/12237922"')
+        print('사용법: python 종목분석.py 종목명')
+        print('예시: python 종목분석.py 인지컨트롤스')
         return
     if not DART_API_KEY:
         print('[오류] DART_API_KEY가 .env.local에 없습니다. https://opendart.fss.or.kr 에서 발급 후 추가하세요.')
         return
 
-    try:
-        info = parse_input(sys.argv[1])
-    except ValueError as e:
-        print(f'[오류] {e}')
-        return
+    name = sys.argv[1].strip()
     today = datetime.now()
-    print(f"종목분석 시작: {info['name']} (현재가 {info['price']:,.0f}원, 시가총액 {info['market_cap_eok']:,.0f}억원)")
+    print(f'종목분석 시작: {name}')
 
     corp_map = load_corp_codes()
-    corp = find_corp_code(info['name'], corp_map)
+    corp = find_corp_code(name, corp_map)
     if not corp:
-        print(f"[오류] DART 상장사 목록에서 '{info['name']}'을 찾지 못했습니다. 정식 회사명을 확인하세요.")
+        print(f"[오류] DART 상장사 목록에서 '{name}'을 찾지 못했습니다. 정식 회사명을 확인하세요.")
         return
     print(f"corp_code={corp['corp_code']} stock_code={corp['stock_code']}")
 
-    print('기업 개요 조회 중...')
-    overview = fetch_company_overview(corp['corp_code'])
+    print('최근 제출 보고서 확인 중...')
+    latest_year, latest_code, latest_label = find_latest_report(corp['corp_code'], today)
+    if latest_year is None:
+        print('[오류] 최근 3년 내 제출된 사업보고서/분기보고서를 찾지 못했습니다.')
+        return
+    print(f'  → 최신 보고서: {latest_year}년 {latest_label}')
 
-    print('연간 재무제표(최근 3개년) 조회 중...')
-    annual = fetch_annual_financials(corp['corp_code'], today.year)
+    annual_years, quarter_specs = build_fetch_plan(latest_year, latest_code)
+    print(f"연간 재무제표 조회 중... ({', '.join(str(y) for y in annual_years)}년 사업보고서)")
+    annual = fetch_annual_financials(corp['corp_code'], annual_years)
 
-    print('최근 분기 실적 조회 중...')
-    quarters = fetch_recent_quarters(corp['corp_code'], today)
+    quarters = []
+    if quarter_specs:
+        labels = ', '.join(f'{y}년 {l}' for y, _, l in quarter_specs)
+        print(f'올해 분기/반기 재무제표 조회 중... ({labels})')
+        quarters = fetch_quarters(corp['corp_code'], quarter_specs)
 
-    print('최근 공시 목록 조회 중...')
-    start_1y = f'{today.year - 1}{today.strftime("%m%d")}'
-    disclosures = fetch_recent_disclosures(corp['corp_code'], start_1y, today.strftime('%Y%m%d'))
-
-    print('네이버 뉴스·웹 검색 중...')
-    news, web = fetch_news_and_web(info['name'])
-
-    print('밸류에이션 계산 중...')
-    valuation = compute_valuation(info, annual, quarters, corp['corp_code'])
+    quote = None
+    if not KIS_APP_KEY or not KIS_APP_SECRET:
+        print('[경고] KIS_APP_KEY/SECRET이 .env.local에 없어 현재가·시가총액 조회를 건너뜁니다.')
+    else:
+        print('현재가·시가총액·발행주식수 조회 중 (KIS)...')
+        try:
+            kis_token = get_kis_token()
+            quote = fetch_kis_quote(kis_token, corp['stock_code'])
+        except Exception as e:
+            print(f'[경고] KIS 현재가 조회 실패, quote 없이 진행: {e}')
 
     result = {
-        'input': info,
+        'name': name,
         'date': today.strftime('%Y-%m-%d'),
         'corp_code': corp['corp_code'],
         'stock_code': corp['stock_code'],
-        'overview': overview,
+        'latest_report': {'year': latest_year, 'reprt_code': latest_code, 'label': latest_label},
+        'quote': quote,
         'annual_financials': annual,
-        'recent_quarters': quarters,
-        'recent_disclosures': disclosures,
-        'news': news,
-        'web': web,
-        'valuation': valuation,
+        'quarterly_financials': quarters,
     }
 
     os.makedirs('종목분석결과', exist_ok=True)
-    out_file = os.path.join('종목분석결과', f"{info['name']}_{today.strftime('%Y%m%d')}.json")
+    out_file = os.path.join('종목분석결과', f"{name}_{today.strftime('%Y%m%d')}.json")
     with open(out_file, 'w', encoding='utf-8') as f:
         json.dump(result, f, ensure_ascii=False, indent=2)
-
     print(f'\n완료: {out_file} 저장됨')
-    print('다음 단계: Claude Code에게 이 JSON을 바탕으로 종목분석 리포트(.docx) 작성을 요청하세요.')
-    print('(사업의 개요·매출/수주 현황·임원/최대주주 상세는 이 스크립트가 수집하지 않으므로,')
-    print(' 리포트 작성 시 dart-mcp/웹 검색으로 보완이 필요합니다.)')
+
+    mongo_uri = os.getenv('MONGODB_URI')
+    if not mongo_uri:
+        print('[경고] MONGODB_URI가 .env.local에 없어 MongoDB 저장을 건너뜁니다 (웹앱에는 반영되지 않음).')
+    else:
+        client = MongoClient(mongo_uri)
+        client.get_default_database()['company_analysis'].update_one(
+            {'_id': corp['stock_code']}, {'$set': result}, upsert=True)
+        client.close()
+        print(f"MongoDB 저장 완료: company_analysis/{corp['stock_code']} ({name})")
+        print('웹앱 "종목 분석" 탭에서 종목명을 검색하면 표시됩니다.')
 
 
 if __name__ == '__main__':

@@ -5,9 +5,49 @@
 ### 상단 탭 (App.jsx의 `topTab` 상태, TopTabs.jsx)
 - `app-top`(Header+TopTabs를 함께 감싸는 sticky 영역) 안에 3개 탭
   1. **주식 거래대금·등락률 분석** — 기존 화면 전체(Calendar~Tables)
-  2. **종목 분석** — 내용 미정, "준비 중" placeholder만 표시
+  2. **종목 분석** — `StockAnalysis.jsx`, 아래 절 참고
   3. **조건 검색** — 내용 미정, "준비 중" placeholder만 표시
 - 탭 전환은 클라이언트 상태로만 처리 (URL 라우팅 없음, react-router 미사용)
+
+### StockAnalysis.jsx (2026-06-24 도입, 2026-06-25 종목 검색 추가)
+- "종목 분석" 탭의 내용. 맨 위에 종목명 검색창(`.stock-search`, `<input list=>` + `<datalist>`로
+  자동완성)이 있고, 그 아래 기업개요·재무상태표·손익계산서·현금흐름표 4개 버튼을 그리드로 표시
+  (`.stock-analysis-tabs`, 데스크톱 4열 → 767px 이하 2열 `.stock-analysis-btn` 폰트/패딩도 같이
+  축소 — 안 줄이면 2열 폭에서 "기업개요" 같은 4글자 라벨도 줄바꿈되어 깨짐, 직접 확인함).
+  클릭하면 `active` 상태만 토글되고(파란 테두리+파란 글자) 해당 버튼의 뷰가 표시됨. 손익계산서·
+  재무상태표는 아직 레이아웃만(`.fin-card`/`.fin-row`, 값은 `-`) — 실제 종목 데이터 연동은
+  아직 안 됨(종목분석.py가 수집하는 DART 재무제표를 연결하는 게 다음 단계, [DATA_PIPELINE.md](DATA_PIPELINE.md)
+  참고). 현금흐름표는 아직 "준비 중" placeholder. 기업개요는 아래 별도 절 참고.
+- **종목 검색 흐름**(2026-06-25): 마운트 시 `/api/getCompanyOverview`(code 없이)로 분석된
+  전체 종목 목록(`{name, stock_code}[]`)을 받아 `<datalist>`에 채워 자동완성을 지원함. 검색창에
+  종목명을 입력 후 엔터/조회 버튼을 누르면 그 목록에서 이름이 정확히 일치(없으면 부분일치)하는
+  종목을 찾아 `stock_code`로 `/api/getCompanyOverview?code=`를 다시 호출, 받은 문서를
+  `companyData` state에 저장해 `CompanyOverviewView`에 `data` prop으로 넘김. 목록에 없으면
+  "분석된 종목이 아닙니다. 먼저 `python 종목분석.py 종목명`을 실행하세요" 안내(`.stock-search-msg`)를
+  보여줌 — 종목 검색 자체가 KRX 전종목을 대상으로 하는 게 아니라 **이미 종목분석.py로 분석해
+  MongoDB `company_analysis`에 저장된 종목만** 대상이라는 점에 주의.
+
+### CompanyOverviewView.jsx (2026-06-25 도입, "기업개요" 버튼)
+- PER(후행/선행)·PBR·ROE·EV/EBITDA 5개 지표를 `.fin-card`로 표시 후, "적정주가" 섹션에 PER법·
+  PBR법·EV/EBITDA법·DCF법 4개 카드(`.val-grid`, 데스크톱 2열 → 767px 이하 1열)를 보여줌. 각
+  카드는 가로 슬라이더(`<input type=range>`, `.val-slider-input`)로 목표 PER/PBR/EV·EBITDA
+  배수 또는 WACC 할인율을 조절하면 적정주가(`.val-fair-price`)가 실시간 재계산됨(React state,
+  헤드리스 브라우저로 슬라이더 드래그 시 값이 실제로 바뀌는 것까지 확인함).
+- **데이터는 `StockAnalysis.jsx`가 검색 결과로 받은 `data` prop**(종목분석.py 출력과 동일한
+  구조: `quote`+`annual_financials`+`quarterly_financials`+`latest_report`) — 자체적으로
+  fetch하거나 import하지 않는 순수 표시 컴포넌트. 이전에는 고정 샘플 1건(`src/data/
+  companyOverviewSample.json`, 종목분석.py로 삼성전자를 실제로 돌려 받은 실데이터)을 직접
+  import해 썼지만, 종목 검색이 연동되면서 그 파일은 삭제하고 props 기반으로 전환함(2026-06-25).
+  `pickFinancials()`가 이 prop에서 계산에 필요한 값만 뽑아냄 — 계산 로직 자체는 변경 없음.
+- **PER(선행) 연환산 규칙**(`annualizeNetIncome()`): 최신 보고서가 1분기보고서면 당기순이익
+  ×4, 반기보고서면 ×2, 3분기보고서면 ×4/3, 사업보고서(연간 확정)면 그대로 — 사용자가 명시한
+  단순 연환산 방식(작년 동기 대비 롤포워드가 아님, 종목분석.py에서 제거됐던 TTM 계산과는
+  다른 더 단순한 방식으로 의도적으로 채택, 2026-06-25).
+- **DCF법은 "간단한 고정 전제"로 단순화**(사용자 요청, 2026-06-25): 연환산 당기순이익을 FCF
+  대용으로 써서 고정 성장률 3%·5년 투자기간·영구성장률 2%로 터미널 밸류를 구하고, WACC만
+  슬라이더로 조절(`DCF_GROWTH_RATE`/`DCF_TERMINAL_GROWTH`/`DCF_YEARS` 상수). 실제 CAPEX·
+  순운전자본 변동은 반영하지 않은 근사치 — WACC 슬라이더 최솟값(4%)은 영구성장률(2%)보다
+  항상 높게 둬서 0으로 나누는 걸 방지.
 
 ### Header.jsx
 - 제목 + 현재 보고 있는 날짜 표시 (이제 `.app-top` 안에서 TopTabs와 함께 sticky)

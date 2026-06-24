@@ -5,6 +5,7 @@ import Calendar from './components/Calendar';
 import IndexSummary from './components/IndexSummary';
 import Analysis from './components/Analysis';
 import Tables from './components/Tables';
+import StockAnalysis from './components/StockAnalysis';
 import {
   dateToISO, CACHE_VERSION,
   saveAnalysisToStorage, loadAnalysisFromStorage,
@@ -161,7 +162,7 @@ export default function App() {
           )}
         </>
       )}
-      {topTab === 'stock'    && <div className="tab-placeholder">종목 분석 — 준비 중입니다</div>}
+      {topTab === 'stock'    && <StockAnalysis />}
       {topTab === 'screener' && <div className="tab-placeholder">조건 검색 — 준비 중입니다</div>}
     </div>
   );

@@ -29,3 +29,22 @@
   "원인"(`상승원인`) 내용만 보여줌. "원인" 라벨 텍스트도 같이 제거해 내용만 바로 표시. Claude
   Code가 분석 JSON을 생성할 때도 `한줄요약`/`트리거` 필드는 더 이상 만들지 않음
   ([DATA_PIPELINE.md](DATA_PIPELINE.md) 참고)
+- **종목분석.py의 밸류에이션·공시 목록·네이버 뉴스/웹 검색·기업 개요 수집** (2026-06-24): 입력도
+  "종목명/현재가/시가총액/발행주식수/유통주식수" 5개 수동 입력에서 종목명 하나로 축소. DART
+  재무제표(연간 3~4개년 + 올해 진행 분기)만 수집하는 순수 데이터 수집 스크립트로 범위를 좁힘 —
+  밸류에이션·서술형 내용은 결과 JSON을 보고 Claude Code가 직접 작성하는 구조로 정리
+  ([DATA_PIPELINE.md](DATA_PIPELINE.md) 참고)
+- **"핫한 테마" 표시 개수 제한** (2026-06-24): 분석 JSON에 테마가 몇 개든 화면엔 최대 6개까지만
+  표시(`Analysis.jsx`의 `ThemeTable`, `MAX_THEMES=6`). Claude Code가 분석 JSON을 생성할 때도
+  테마를 6개 이하로 작성 ([DATA_PIPELINE.md](DATA_PIPELINE.md) 참고)
+- **등락률 상위 50의 NXT 비중 큰 종목 누락 버그** (2026-06-24~25 수정): `RATE_MIN_AMOUNT`(거래대금
+  300억)를 KIS 보강 "이전"(FDR 단독 거래대금)에 적용해서, NXT 체결 비중이 큰 종목(예: FDR 단독
+  40억 vs KIS 통합 370억)이 후보군에서 통째로 빠지던 버그. 사전 후보 풀(`RATE_PRECHECK_MIN_AMOUNT`,
+  30억)로 넓힌 뒤 KIS 보강 "이후" 통합 거래대금에 300억 기준을 다시 적용하는 2단계 필터로 수정
+  ([DATA_PIPELINE.md](DATA_PIPELINE.md) 참고)
+- **기업개요 고정 샘플 import** (`src/data/companyOverviewSample.json` 삭제, 2026-06-25): 종목
+  검색 입력이 없어 삼성전자 결과 1건을 `CompanyOverviewView.jsx`가 직접 import해 쓰던 임시
+  방편을 제거. 종목분석.py가 결과를 MongoDB `company_analysis`에도 저장하도록 바꾸고,
+  `StockAnalysis.jsx`에 종목명 검색창(자동완성)을 추가해 `api/getCompanyOverview.js`로 조회한
+  데이터를 `data` prop으로 넘기는 방식으로 교체 ([DATA_PIPELINE.md](DATA_PIPELINE.md),
+  [FRONTEND.md](FRONTEND.md) 참고)

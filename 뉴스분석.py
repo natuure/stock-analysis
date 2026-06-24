@@ -45,7 +45,13 @@ def format_date_korean(date_str):
 # ── FinanceDataReader 전종목 수집 ────────────────────────────────────────────
 
 UPPER_LIMIT_RATE = 29.5
-RATE_MIN_AMOUNT  = 30_000_000_000  # 등락률 순위 집계 대상 최소 거래대금 (300억)
+RATE_MIN_AMOUNT  = 30_000_000_000  # 등락률 순위 최종 컷오프 (300억) — KIS 보강 후 통합 거래대금에 적용
+RATE_PRECHECK_MIN_AMOUNT = 3_000_000_000  # KIS 보강 대상 1단계 사전 후보 풀 (30억, FDR 단독 기준).
+    # RATE_MIN_AMOUNT보다 훨씬 낮게 잡는 이유: FDR Amount는 KRX 거래소 단독 거래대금이라 NXT
+    # 비중이 큰 종목은 실제(KRX+NXT 통합) 거래대금이 300억을 넘어도 FDR 기준으론 한참 못 미칠 수
+    # 있음 — 2026-06-24 직접 확인(에이프릴바이오 FDR 206.6억→KIS통합 794.6억, 로켓헬스케어
+    # FDR 40.1억→KIS통합 370.3억). 30억은 그날 실제 누락 사례(가장 작은 게 37.4억) 기준으로
+    # 여유를 둔 값.
 
 SPAC_PATTERN = '스팩|기업인수목적'
 
@@ -105,6 +111,9 @@ def build_vol_list(df, prev_ranks, top=50):
     return result
 
 def build_rate_list(df, top=50):
+    """KIS를 전혀 못 쓸 때(키 없음·토큰 발급 실패 등)의 폴백 경로. NXT 통합 데이터가 없어
+    FDR(KRX 단독) Amount로만 RATE_MIN_AMOUNT(300억) 기준을 적용한다 — 이 경로에서는 NXT
+    비중이 큰 종목을 놓칠 수 있는 한계가 그대로 남는다(KIS 없이는 피할 수 없음)."""
     eligible = df[df['Amount'] >= RATE_MIN_AMOUNT]
     top_df = eligible.sort_values('ChagesRatio', ascending=False).head(top)
     result = []
@@ -220,7 +229,10 @@ def fetch_kis_prev_close(token, code, date_str, lookback_days=10):
 
 
 def enrich_with_kis(df, date_str):
-    """RATE_MIN_AMOUNT(300억) 이상인 종목만 후보로 추려 KIS UN(통합) 데이터로 보강한다.
+    """RATE_PRECHECK_MIN_AMOUNT(30억) 이상인 종목만 1단계 후보로 추려 KIS UN(통합) 데이터로
+    보강한다. 최종 등락률 컷오프(RATE_MIN_AMOUNT, 300억)는 여기서 적용하지 않고, 보강이 끝난
+    뒤 build_vol_rate_from_enriched()가 (통합) tradingVolume 기준으로 2단계로 한 번 더 거른다
+    — 이 함수는 1단계 후보 추출과 KIS 보강만 담당.
     종목별 호출 실패(상장정지·일시 오류 등)는 그 종목만 FDR(KRX 단독) 값으로 폴백해서
     명단에서 빠지지 않게 한다. KIS 전체를 못 쓰면(키 없음·토큰 발급 실패) None을 반환해
     main()이 기존 FDR 전용 경로로 통째로 폴백하게 한다."""
@@ -228,7 +240,7 @@ def enrich_with_kis(df, date_str):
         print('[경고] KIS_APP_KEY/SECRET 또는 MONGODB_URI 없음 — FDR 전용으로 폴백')
         return None
 
-    candidates = df[df['Amount'] >= RATE_MIN_AMOUNT]
+    candidates = df[df['Amount'] >= RATE_PRECHECK_MIN_AMOUNT]
     client = MongoClient(MONGODB_URI)
     db = client.get_default_database()
     try:
@@ -288,7 +300,13 @@ def build_vol_rate_from_enriched(enriched, prev_ranks, top=50):
         s['rank'] = rank
         s['prevRank'] = prev_ranks.get(s['code'])
 
-    rate_sorted = sorted(enriched, key=lambda s: s['changeRate'], reverse=True)[:top]
+    # 등락률 목록만 2단계 최종 컷오프 적용: 1단계(RATE_PRECHECK_MIN_AMOUNT)로 넓게 받은 후보 중
+    # KIS 보강(또는 NXT 미거래 시 FDR 폴백) 후의 실제 통합 거래대금이 RATE_MIN_AMOUNT(300억)
+    # 이상인 종목만 남긴다 — tradingVolume은 백만원 단위라 RATE_MIN_AMOUNT(원 단위)를 맞춰 나눔.
+    # 거래대금(vol) 목록은 원래도 최소 거래대금 기준이 없어 그대로 둔다.
+    rate_min_amount_million = RATE_MIN_AMOUNT / 1_000_000
+    rate_eligible = [s for s in enriched if s['tradingVolume'] >= rate_min_amount_million]
+    rate_sorted = sorted(rate_eligible, key=lambda s: s['changeRate'], reverse=True)[:top]
     rate = [{
         'rank': i + 1,
         'code': s['code'],

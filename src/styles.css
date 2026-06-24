@@ -409,3 +409,83 @@ tbody tr.chart-row td { text-align: left; white-space: normal; padding: 0; }
 .candle-legend-item i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .candle-chart { width: 100%; height: 250px; }
 .spin { animation: spin 1s linear infinite; display: inline-block; }
+
+/* ── 종목 분석 탭 ─────────────────────────────────────────── */
+.stock-search { display: flex; gap: 8px; margin-bottom: 14px; }
+.stock-search-input {
+  flex: 1; padding: 11px 14px;
+  border: 1px solid var(--c-border); border-radius: var(--r-sm);
+  font-size: 14px; color: var(--c-heading); background: rgba(0,23,51,.02);
+  transition: border-color .15s;
+}
+.stock-search-input:focus { border-color: var(--c-primary); }
+.stock-search-input::placeholder { color: var(--c-placeholder); }
+.stock-search-btn {
+  padding: 0 22px; border-radius: var(--r-sm);
+  background: var(--c-primary); color: #fff;
+  font-size: 14px; font-weight: 600; white-space: nowrap;
+}
+.stock-search-msg { font-size: 13px; color: var(--c-muted); margin-bottom: 14px; }
+.stock-analysis-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.stock-analysis-btn {
+  background: var(--c-bg); border-radius: var(--r-md); box-shadow: var(--shadow-card);
+  padding: 22px 14px; text-align: center;
+  font-size: 15px; font-weight: 700; color: var(--c-heading);
+  transition: box-shadow .15s, color .15s;
+}
+.stock-analysis-btn:hover  { box-shadow: var(--shadow-high); }
+.stock-analysis-btn.active { color: var(--c-primary); box-shadow: 0 0 0 2px var(--c-primary) inset; }
+.stock-analysis .tab-placeholder { padding: 60px 20px; }
+.fin-card {
+  background: var(--c-bg); border-radius: var(--r-md); box-shadow: var(--shadow-card);
+  padding: 4px 20px; margin-top: 16px;
+}
+.fin-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 0; border-bottom: 1px solid var(--c-border);
+}
+.fin-row:last-child { border-bottom: none; }
+.fin-label { font-size: 14px; font-weight: 600; color: var(--c-heading); }
+.fin-value { font-size: 14px; color: var(--c-muted); font-variant-numeric: tabular-nums; }
+
+/* ── 종목 분석 — 기업개요(적정주가 슬라이더) ─────────────────── */
+.val-section-title {
+  font-size: 16px; font-weight: 700; color: var(--c-heading);
+  margin: 24px 0 12px;
+}
+.val-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+.val-method-card {
+  background: var(--c-bg); border-radius: var(--r-md); box-shadow: var(--shadow-card);
+  padding: 18px 20px;
+}
+.val-method-title { font-size: 14px; font-weight: 700; color: var(--c-heading); margin-bottom: 14px; }
+.val-slider-row { margin-bottom: 14px; }
+.val-slider-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 8px; font-size: 12px;
+}
+.val-slider-label { color: var(--c-muted); font-weight: 600; }
+.val-slider-value {
+  color: var(--c-primary); font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.val-slider-input {
+  -webkit-appearance: none; appearance: none; width: 100%; height: 4px;
+  border-radius: var(--r-pill); background: var(--c-surface); outline: none;
+}
+.val-slider-input::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--c-primary); cursor: pointer; box-shadow: var(--shadow-card);
+}
+.val-slider-input::-moz-range-thumb {
+  width: 18px; height: 18px; border-radius: 50%; border: none;
+  background: var(--c-primary); cursor: pointer; box-shadow: var(--shadow-card);
+}
+.val-fair-price {
+  font-size: 22px; font-weight: 700; color: var(--c-heading);
+  font-variant-numeric: tabular-nums; text-align: right;
+}
+@media (max-width: 767px) {
+  .stock-analysis-tabs { grid-template-columns: repeat(2, 1fr); }
+  .stock-analysis-btn { padding: 16px 8px; font-size: 13px; }
+  .val-grid { grid-template-columns: 1fr; }
+}

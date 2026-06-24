@@ -1,7 +1,10 @@
 import { useState } from 'react';
 
+const MAX_THEMES = 6;
+
 function ThemeTable({ themes }) {
   if (!themes || themes.length === 0) return null;
+  const shown = themes.slice(0, MAX_THEMES);
   return (
     <div>
       <h2 className="sec-title" style={{ marginTop: 36 }}>핫한 테마</h2>
@@ -15,7 +18,7 @@ function ThemeTable({ themes }) {
             </tr>
           </thead>
           <tbody>
-            {themes.map((row, i) => (
+            {shown.map((row, i) => (
               <tr key={i}>
                 <td><span className="theme-tag">{row.테마}</span></td>
                 <td className="theme-material">{row.핵심재료}</td>
