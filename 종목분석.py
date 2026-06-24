@@ -62,6 +62,9 @@ INVENTORY_NAMES = ['재고자산', '유동재고자산']
 CAPITAL_SURPLUS_NAMES = ['자본잉여금', '주식발행초과금']
 # 선수금은 2018년 수익인식기준(K-IFRS 1115) 도입 이후 '계약부채'로 대체 표기하는 회사도 있음.
 ADVANCE_RECEIPTS_NAMES = ['선수금', '계약부채']
+# 매출액도 '매출액'/'영업수익' 둘 다 없이 '수익(매출액)'만 쓰는 회사가 있음(일지테크 2025년
+# 사업보고서에서 직접 확인, 2026-06-25 — 영업이익은 있는데 매출액만 null로 나와서 발견).
+REVENUE_NAMES = ['매출액', '영업수익', '수익(매출액)']
 
 
 # ── DART corp_code 매핑 (종목명 → corp_code) ─────────────────────────────────
@@ -241,12 +244,13 @@ def fetch_annual_financials(corp_code, years):
             continue
         annual[str(year)] = {
             'fs_div': fs_div,
-            '매출액': extract_account(items, ['매출액', '영업수익']),
+            '매출액': extract_account(items, REVENUE_NAMES),
             '영업이익': extract_account(items, ['영업이익', '영업이익(손실)']),
             # 주의: 지배주주지분 계정명(PARENT_EQUITY_NAMES)을 당기순이익 후보에 넣으면 안 됨
             # — BS(재무상태표)에도 같은 이름의 항목이 있어 자본 항목이 먼저 매칭되는 버그가 났었음.
             '당기순이익': extract_account(items, NET_INCOME_NAMES),
-            '기본주당이익_DART': extract_account(items, ['기본 주당이익', '기본주당이익', '기본 주당이익(손실)']),
+            # '기본주당이익(손실)'(공백 없음+손실 표기)도 쓰는 회사가 있음(일지테크, 직접 확인 2026-06-25).
+            '기본주당이익_DART': extract_account(items, ['기본 주당이익', '기본주당이익', '기본 주당이익(손실)', '기본주당이익(손실)']),
             '자산총계': extract_account(items, ['자산총계']),
             '부채총계': extract_account(items, ['부채총계']),
             '자본총계': extract_account(items, ['자본총계']),
@@ -278,7 +282,7 @@ def fetch_quarters(corp_code, specs):
             continue
         quarters.append({
             'year': year, 'reprt_code': code, 'label': label, 'fs_div': fs_div,
-            '매출액': extract_account(items, ['매출액', '영업수익']),
+            '매출액': extract_account(items, REVENUE_NAMES),
             '영업이익': extract_account(items, ['영업이익', '영업이익(손실)']),
             '당기순이익': extract_account(items, NET_INCOME_NAMES),
             '영업활동현금흐름': extract_account(items, ['영업활동현금흐름', '영업활동으로인한현금흐름', '영업활동으로 인한 현금흐름']),
