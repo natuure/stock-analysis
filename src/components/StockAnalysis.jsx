@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { fmtN } from '../utils';
 import CompanyOverviewView from './CompanyOverviewView';
 
 const SECTIONS = [
@@ -7,6 +8,17 @@ const SECTIONS = [
   { key: 'income',   label: '손익계산서' },
   { key: 'cashflow', label: '현금흐름표' },
 ];
+
+// annual_financials는 연도("2023" 등) 키의 객체라 가장 최근 연도(사업보고서가 최신이면 그
+// 연도, 분기가 최신이면 그 전 해 — 종목분석.py의 build_fetch_plan()이 이미 그렇게 채워둠)만 쓴다.
+function lastAnnual(data) {
+  const years = Object.keys(data.annual_financials || {}).sort();
+  return years.length ? data.annual_financials[years[years.length - 1]] : null;
+}
+function fmtEok(n) { return n == null ? '-' : `${fmtN(n / 1e8)}억원`; }
+function fmtWon(n) { return n == null ? '-' : `${fmtN(n)}원`; }
+function fmtPct(n) { return n == null || !isFinite(n) ? '-' : `${n.toFixed(2)}%`; }
+function ratioOf(num, base) { return (num != null && base) ? (num / base) * 100 : null; }
 
 // 비용구조(원재료비/인건비/감가상각비 비중)는 DART API(fnlttSinglAcntAll)가 본문 재무제표만
 // 제공하고 주석은 주지 않아 제외함 — 직접 확인(2026-06-24), DATA_PIPELINE.md 참고.
@@ -18,13 +30,21 @@ const INCOME_ROWS = [
   { key: 'eps',       label: '주당순이익' },
 ];
 
-function IncomeStatementView() {
+function IncomeStatementView({ data }) {
+  const f = lastAnnual(data);
+  const values = {
+    revenue:   fmtEok(f?.매출액),
+    opIncome:  fmtEok(f?.영업이익),
+    opMargin:  fmtPct(ratioOf(f?.영업이익, f?.매출액)),
+    netIncome: fmtEok(f?.당기순이익),
+    eps:       fmtWon(f?.기본주당이익_DART),
+  };
   return (
     <div className="fin-card">
       {INCOME_ROWS.map(row => (
         <div className="fin-row" key={row.key}>
           <span className="fin-label">{row.label}</span>
-          <span className="fin-value">-</span>
+          <span className="fin-value">{values[row.key]}</span>
         </div>
       ))}
     </div>
@@ -43,13 +63,27 @@ const BALANCE_ROWS = [
   { key: 'retainedEarnings', label: '이익잉여금' },
 ];
 
-function BalanceSheetView() {
+function BalanceSheetView({ data }) {
+  const f = lastAnnual(data);
+  // CAPEX 자체(투자 흐름)는 DART 본문 재무제표에 없어 유형자산(보유 자산 스냅샷)으로 근사함
+  // — 종목분석.py가 수집하는 재무상태표 항목 중 CAPEX와 가장 가까운 유일한 필드.
+  const values = {
+    capexRatio:       fmtPct(ratioOf(f?.유형자산, f?.자산총계)),
+    inventoryRatio:   fmtPct(ratioOf(f?.재고자산, f?.자산총계)),
+    receivableRatio:  fmtPct(ratioOf(f?.매출채권, f?.자산총계)),
+    cashRatio:        fmtPct(ratioOf(f?.현금및현금성자산, f?.자산총계)),
+    debtRatio:        fmtPct(ratioOf(f?.부채총계, f?.자본총계)),
+    advances:         fmtEok(f?.선수금),
+    capitalStock:     fmtEok(f?.자본금),
+    capitalSurplus:   fmtEok(f?.자본잉여금),
+    retainedEarnings: fmtEok(f?.이익잉여금),
+  };
   return (
     <div className="fin-card">
       {BALANCE_ROWS.map(row => (
         <div className="fin-row" key={row.key}>
           <span className="fin-label">{row.label}</span>
-          <span className="fin-value">-</span>
+          <span className="fin-value">{values[row.key]}</span>
         </div>
       ))}
     </div>
@@ -133,9 +167,13 @@ export default function StockAnalysis() {
           ? <CompanyOverviewView data={companyData} />
           : <div className="tab-placeholder">종목을 검색하세요</div>
       ) : active === 'income' ? (
-        <IncomeStatementView />
+        companyData
+          ? <IncomeStatementView data={companyData} />
+          : <div className="tab-placeholder">종목을 검색하세요</div>
       ) : active === 'balance' ? (
-        <BalanceSheetView />
+        companyData
+          ? <BalanceSheetView data={companyData} />
+          : <div className="tab-placeholder">종목을 검색하세요</div>
       ) : (
         <div className="tab-placeholder">
           {active

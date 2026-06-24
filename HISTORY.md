@@ -48,3 +48,8 @@
   `StockAnalysis.jsx`에 종목명 검색창(자동완성)을 추가해 `api/getCompanyOverview.js`로 조회한
   데이터를 `data` prop으로 넘기는 방식으로 교체 ([DATA_PIPELINE.md](DATA_PIPELINE.md),
   [FRONTEND.md](FRONTEND.md) 참고)
+- **재무상태표·손익계산서 항목이 전부 `-`만 표시** (2026-06-25 수정): 레이아웃만 있고 값 계산이
+  없던 `IncomeStatementView`/`BalanceSheetView`(`StockAnalysis.jsx`)에 종목 검색 결과(`data`
+  prop)로 매출액·영업이익률·당기순이익·주당순이익과 CAPEX·재고자산·매출채권·현금 비중·
+  부채비율을 계산하는 로직을 추가 — 기업개요와 동일하게 검색 전에는 "종목을 검색하세요"
+  placeholder를 보여줌 ([FRONTEND.md](FRONTEND.md) 참고)
