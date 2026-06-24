@@ -65,6 +65,14 @@ ADVANCE_RECEIPTS_NAMES = ['선수금', '계약부채']
 # 매출액도 '매출액'/'영업수익' 둘 다 없이 '수익(매출액)'만 쓰는 회사가 있음(일지테크 2025년
 # 사업보고서에서 직접 확인, 2026-06-25 — 영업이익은 있는데 매출액만 null로 나와서 발견).
 REVENUE_NAMES = ['매출액', '영업수익', '수익(매출액)']
+# 유형자산도 '유형자산' 라인 자체가 없는 보고서가 있음(일지테크 2025년 사업보고서, 직접 확인
+# 2026-06-25) — 대신 '기초 유형자산'이라는 계정만 있는데, 그 행의 전기(frmtrm_amount)·전전기
+# (bfefrmtrm_amount) 값이 각각 2024·2023년 사업보고서의 실제 '유형자산' 당기 값과 정확히
+# 일치함을 직접 대조해 확인함 — 같은 회사가 매년 같은 컬럼 구조로 보고하는 것으로 보이며,
+# '기초'라는 이름과 달리 실질적으로 그 해의 유형자산 BS 라인 역할을 하는 것으로 판단해 후보에
+# 포함. 다만 이름이 글자 그대로는 "기초"(기간 시작 시점)라 다른 회사·연도에서 진짜 기초/기말이
+# 둘 다 따로 보고되는 경우에는 어느 쪽이 먼저 매칭될지 보장되지 않는 한계가 있음.
+FIXED_ASSET_NAMES = ['유형자산', '기초 유형자산']
 
 
 # ── DART corp_code 매핑 (종목명 → corp_code) ─────────────────────────────────
@@ -260,7 +268,7 @@ def fetch_annual_financials(corp_code, years):
             '차입금_추정': extract_account_like(items, '차입금'),
             '감가상각비': extract_account(items, ['감가상각비']),
             '무형자산': extract_account(items, ['무형자산']),
-            '유형자산': extract_account(items, ['유형자산']),
+            '유형자산': extract_account(items, FIXED_ASSET_NAMES),
             '재고자산': extract_account(items, INVENTORY_NAMES),
             '매출채권': extract_account(items, ACCOUNTS_RECEIVABLE_NAMES),
             '선수금': extract_account(items, ADVANCE_RECEIPTS_NAMES),
@@ -293,7 +301,7 @@ def fetch_quarters(corp_code, specs):
             '현금및현금성자산': extract_account(items, ['현금및현금성자산']),
             '단기금융상품': extract_account(items, ['단기금융상품']),
             '무형자산': extract_account(items, ['무형자산']),
-            '유형자산': extract_account(items, ['유형자산']),
+            '유형자산': extract_account(items, FIXED_ASSET_NAMES),
             '재고자산': extract_account(items, INVENTORY_NAMES),
             '매출채권': extract_account(items, ACCOUNTS_RECEIVABLE_NAMES),
             '선수금': extract_account(items, ADVANCE_RECEIPTS_NAMES),
