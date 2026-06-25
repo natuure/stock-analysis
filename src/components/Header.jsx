@@ -3,7 +3,7 @@ export default function Header({ date }) {
     <header className="app-header">
       <div>
         <div className="header-title">GM Investment</div>
-        <div className="header-sub">{date || '파일을 업로드하면 분석이 시작됩니다'}</div>
+        {date && <div className="header-sub">{date}</div>}
       </div>
     </header>
   );
