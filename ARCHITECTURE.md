@@ -50,6 +50,7 @@ Python (로컬 실행, 고정 IP)
 │   ├── candles.js              # GET ?symbol=&date= → KIS Open API 직접 호출(실시간), 실패 시 candles 캐시 폴백
 │   ├── getCompanyOverview.js   # GET (code 없음) → 분석된 종목 목록 / GET ?code= → company_analysis 조회 +
 │   │                             KIS로 현재가 실시간 덮어씀(실패 시에만 저장된 quote 폴백)
+│   ├── getThemeTrend.js        # GET ?days=(기본 14) → ai_analysis에서 최근 N일 테마 배열만 프로젝션해 반환
 │   └── _kis.js                 # KIS 접근토큰 발급·캐싱 공용 모듈(라우트 아님, candles.js·getCompanyOverview.js가 import)
 ├── src/
 │   ├── main.jsx
@@ -62,9 +63,10 @@ Python (로컬 실행, 고정 IP)
 │       ├── Calendar.jsx     # serverDates prop 추가 (MongoDB 날짜 표시), 주차(W##) 칸
 │       ├── Tables.jsx       # 거래대금·등락률 테이블, 행 클릭 시 그 표 내부에서 차트 패널을 인라인으로 펼침/접음(독립 상태)
 │       ├── StockChartPanel.jsx  # 종목 클릭 시 표 행 아래에 인라인으로 펼치는 일봉/주봉 캔들 차트 패널(모달 아님)
-│       ├── Analysis.jsx     # ThemeTable + AiPanels + N파일
+│       ├── Analysis.jsx     # ThemeTable + ThemeCategoryTrend(최근 14일 카테고리 추이) + AiPanels + N파일
 │       ├── StockAnalysis.jsx  # "종목 분석" 탭 — 종목명 검색(자동완성)창 + 기업개요/재무상태표/손익계산서/현금흐름표 4버튼
-│       └── CompanyOverviewView.jsx  # 기업개요 — PER/PBR/ROE/EV·EBITDA + 적정주가 슬라이더 4종 (data prop으로 받음)
+│       ├── CompanyOverviewView.jsx  # 기업개요 — PER/PBR/ROE/EV·EBITDA + 적정주가 슬라이더 4종 (data prop으로 받음)
+│       └── TrendChart.jsx   # 의존성 없는 SVG 추이 차트(막대/꺾은선), StockAnalysis.jsx·Analysis.jsx 공용
 ├── 뉴스분석.py              # FinanceDataReader 수집 + Naver 뉴스 + stock_data 저장
 ├── 저장분석.py              # ai_analysis MongoDB 저장
 ├── 주간분석.py              # 코스피/코스닥 주간 변동률 → weekly_indices 저장
@@ -88,7 +90,7 @@ Python (로컬 실행, 고정 IP)
 | 컬렉션 | 용도 | 구조 |
 |--------|------|------|
 | `stock_data` | 일별 종목 데이터 | `{ _id: "YYYY-MM-DD", vol: [...], rate: [...], date: "2026년 6월 17일 (화)", indices: {...} }` |
-| `ai_analysis` | AI 분석 결과 | `{ _id: "YYYY-MM-DD", analysis: { 테마:[...], 거래대금:[...], 등락률:[...] } }` |
+| `ai_analysis` | AI 분석 결과 | `{ _id: "YYYY-MM-DD", analysis: { 테마:[...], 거래대금:[...], 등락률:[...] } }` — `테마` 배열 각 항목에 2026-06-25부터 `카테고리`(고정 13개 값 중 하나, 일자 간 추이 집계용) 필드 추가, [DATA_PIPELINE.md](DATA_PIPELINE.md) 참고 |
 | `candles` | 종목별 토스 일봉 캔들 캐시 (KIS 실패 시 폴백용) | `{ _id: "종목코드_YYYY-MM-DD", candles: [...] }` (해당일 거래대금/등락률 상위 종목만) |
 | `kis_token` | KIS 접근토큰 캐시 (1분당 1회 발급 제한 대응) | `{ _id: "token", accessToken, expiresAt }` 단일 문서 |
 | `weekly_indices` | 주간 코스피/코스닥 변동률 (주간분석.py가 채움) | `{ _id: "YYYY-W##", kospi: {...}, kosdaq: {...} }` |
@@ -104,6 +106,7 @@ Python (로컬 실행, 고정 IP)
 |-----------|--------|------|
 | `/api/getData` | GET | date 없음: 날짜 목록 반환 / date 있음: 해당일 vol+rate+indices 반환 |
 | `/api/getAnalysis` | GET | `?date=YYYY-MM-DD` → ai_analysis 반환 |
+| `/api/getThemeTrend` | GET | `?days=`(기본 14, 최대 90) → ai_analysis에서 최근 N일의 `테마` 배열만 프로젝션해 반환(거래대금/등락률 제외, 날짜 내림차순) — "거래대금·등락률 분석" 탭의 테마 카테고리 추이 차트용 |
 | `/api/analyzeStocks` | POST | Claude API 프록시 (현재 미사용) |
 | `/api/candles` | GET | `?symbol=&date=` → KIS Open API로 일봉 캔들 85개 실시간 조회. 실패 시에만 MongoDB `candles`(토스 캐시) 폴백 |
 | `/api/getCompanyOverview` | GET | code 없음: company_analysis 전체 목록(`name`+`stock_code`, 검색 자동완성용) / `?code=종목코드`: 단건 조회 + KIS Open API로 현재가를 실시간 재조회해 `quote` 덮어씀(실패 시에만 저장된 `quote` 폴백) |

@@ -32,6 +32,7 @@ export default function App() {
   const [serverDates, setServerDates] = useState([]);
   const [weeklyIdx,   setWeeklyIdx]   = useState({});
   const [weekSelected, setWeekSelected] = useState(null);
+  const [themeTrend,  setThemeTrend]  = useState(null);
 
   const volRef  = useRef(null);
   const rateRef = useRef(null);
@@ -44,6 +45,13 @@ export default function App() {
         if (dates) setServerDates(dates);
         if (weeklyIndices) setWeeklyIdx(weeklyIndices);
       })
+      .catch(() => {});
+
+    // 최근 N일 테마 카테고리 추이 — 캘린더에서 어느 날짜를 골랐는지와 무관한 "현재 펄스"라
+    // 날짜 선택과 별개로 앱이 뜰 때 한 번만 가져온다.
+    fetch('/api/getThemeTrend')
+      .then(r => r.json())
+      .then(({ days }) => setThemeTrend(days || []))
       .catch(() => {});
   }, []);
 
@@ -148,7 +156,7 @@ export default function App() {
           )}
           {showMain && (
             <main>
-              <Analysis analysisExcel={analysisExcel} aiAnalysis={aiAnalysis} />
+              <Analysis analysisExcel={analysisExcel} aiAnalysis={aiAnalysis} themeTrend={themeTrend} />
               <h2 className="sec-title" style={{ marginTop: 36 }}>종목 데이터</h2>
               <Tables
                 vol={vol} rate={rate}
