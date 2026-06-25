@@ -156,7 +156,7 @@ export default function App() {
           )}
           {showMain && (
             <main>
-              <Analysis analysisExcel={analysisExcel} aiAnalysis={aiAnalysis} themeTrend={themeTrend} />
+              <Analysis analysisExcel={analysisExcel} aiAnalysis={aiAnalysis} themeTrend={themeTrend} vol={vol} rate={rate} />
               <h2 className="sec-title" style={{ marginTop: 36 }}>종목 데이터</h2>
               <Tables
                 vol={vol} rate={rate}
