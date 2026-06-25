@@ -68,7 +68,7 @@ function ThemeCategoryTrend({ themeTrend }) {
   if (!agg) return null; // 카테고리 데이터가 아예 없으면 섹션 자체를 숨김(다른 빈 섹션과 동일 패턴)
   return (
     <TrendChart
-      type="bar"
+      type="line"
       title={`최근 ${agg.periods.length}일 테마 카테고리 등장 빈도`}
       periods={agg.periods}
       metrics={agg.metrics}
