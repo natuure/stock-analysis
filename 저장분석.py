@@ -13,6 +13,23 @@ from pymongo import MongoClient
 
 load_dotenv('.env.local')
 
+VALID_CATEGORIES = {
+    '반도체', '2차전지', '바이오/제약', '조선', '방산', '금융/증권', '건설/건자재', 'AI/로봇',
+    '에너지/신재생', '전력/전선인프라', '화장품/유통', '자동차', '지주사/지분가치재평가', '기타',
+}
+
+
+def validate_categories(analysis):
+    problems = []
+    for key in ('거래대금', '등락률'):
+        for i, item in enumerate(analysis.get(key, [])):
+            cat = item.get('카테고리')
+            if not cat:
+                problems.append(f'{key}[{i}] {item.get("종목명", "?")}: 카테고리 없음')
+            elif cat not in VALID_CATEGORIES:
+                problems.append(f'{key}[{i}] {item.get("종목명", "?")}: 알 수 없는 카테고리 "{cat}"')
+    return problems
+
 
 def find_latest():
     files = glob.glob(os.path.join('분석결과', '분석결과_*.json'))
@@ -36,6 +53,13 @@ def main():
     analysis = data.get('analysis')
     if not date or not analysis:
         print('오류: JSON에 date 또는 analysis 필드가 없습니다.')
+        sys.exit(1)
+
+    problems = validate_categories(analysis)
+    if problems:
+        print('오류: 카테고리 누락/오타가 있어 저장을 중단합니다.')
+        for p in problems:
+            print(' -', p)
         sys.exit(1)
 
     uri = os.getenv('MONGODB_URI')
