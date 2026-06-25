@@ -232,6 +232,22 @@ def extract_account(items, names, sj_div=None):
     return None
 
 
+def extract_eps(items, sj_div=None):
+    """기본주당이익(EPS_NAMES)을 찾고, 없으면 그 기간에 중단영업이 있었던 회사가 단일
+    합계줄 없이 '계속영업 기본주당순이익'+'중단영업 기본주당순이익'으로 나눠 보고하는
+    경우를 대신 합산한다(카카오 2025년 사업보고서·2026년 1분기보고서에서 직접 확인,
+    2026-06-25 — 둘 다 있고 합산된 단일 표기는 아예 없었음). 중단영업이 없으면 그 행
+    자체가 없어 0으로 처리."""
+    eps = extract_account(items, EPS_NAMES, sj_div=sj_div)
+    if eps is not None:
+        return eps
+    continuing = extract_account(items, ['계속영업 기본주당순이익'], sj_div=sj_div)
+    if continuing is None:
+        return None
+    discontinued = extract_account(items, ['중단영업 기본주당순이익'], sj_div=sj_div) or 0
+    return continuing + discontinued
+
+
 def extract_account_like(items, keyword, sj_div='BS'):
     """account_nm에 keyword가 포함된 재무상태표(BS) 항목들의 당기 금액 합계
     (차입금처럼 유동/비유동으로 라벨이 갈리는 계정용). sj_div를 BS로 한정하는 이유:
@@ -293,7 +309,7 @@ def fetch_annual_financials(corp_code, years):
             # 주의: 지배주주지분 계정명(PARENT_EQUITY_NAMES)을 당기순이익 후보에 넣으면 안 됨
             # — BS(재무상태표)에도 같은 이름의 항목이 있어 자본 항목이 먼저 매칭되는 버그가 났었음.
             '당기순이익': extract_account(items, NET_INCOME_NAMES),
-            '기본주당이익_DART': extract_account(items, EPS_NAMES),
+            '기본주당이익_DART': extract_eps(items),
             '자산총계': extract_account(items, ['자산총계']),
             '부채총계': extract_account(items, ['부채총계']),
             '자본총계': extract_account(items, ['자본총계']),
@@ -330,7 +346,7 @@ def fetch_quarters(corp_code, specs):
             '당기순이익': extract_account(items, NET_INCOME_NAMES),
             # 분기 EPS는 그 분기 자체 실적 기준(누적이 아님) — 추세 차트에서 연환산 없이 그대로
             # 보여주는 용도(사용자 요청, 2026-06-25).
-            '기본주당이익_DART': extract_account(items, EPS_NAMES),
+            '기본주당이익_DART': extract_eps(items),
             '영업활동현금흐름': extract_account(items, ['영업활동현금흐름', '영업활동으로인한현금흐름', '영업활동으로 인한 현금흐름']),
             # 재무상태표 항목 — 분기말 시점 스냅샷이라 연간 데이터와 동일하게 매 보고서에 포함됨.
             '자산총계': extract_account(items, ['자산총계']),
