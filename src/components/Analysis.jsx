@@ -81,12 +81,17 @@ function ThemeCategoryTrend({ themeTrend }) {
 // 종목명으로 매칭해 카테고리별 "종목 수"를 센다(금액/등락률 합산이 아니라 단순 개수 —
 // 사용자가 비중 대신 "50개 중 몇 종목" 표시를 명시적으로 요청). 매칭 실패/카테고리 없음은
 // "기타"로 폴백(어떤 종목도 누락되지 않고 항상 기타로 흡수됨 — count 합은 항상 items.length).
-// 카테고리별 종목명 목록(members)도 같이 반환해 범례 클릭 시 펼쳐서 보여주는 데 쓴다.
+// 카테고리별 종목 목록(members, {name, candidate})도 같이 반환해 범례 클릭 시 펼쳐서
+// 보여주는 데 쓴다 — candidate는 신규카테고리후보(있으면 PieChart가 빨간 글씨로 표시).
 function aggregateByCategory(items, aiItems) {
   if (!items || items.length === 0) return null;
 
   const catByName = new Map();
-  (aiItems || []).forEach(it => { if (it.카테고리) catByName.set(it.종목명, it.카테고리); });
+  const candidateByName = new Map();
+  (aiItems || []).forEach(it => {
+    if (it.카테고리) catByName.set(it.종목명, it.카테고리);
+    if (it.신규카테고리후보) candidateByName.set(it.종목명, it.신규카테고리후보);
+  });
   // 그날 카테고리가 하나도 없으면(2026-06-26 이전 날짜 등 미백필분) "전부 기타"로 보여주지
   // 않고 차트 자체를 숨긴다 — 분류 안 한 것과 분류했더니 전부 기타인 것은 다른 의미.
   if (catByName.size === 0) return null;
@@ -94,7 +99,8 @@ function aggregateByCategory(items, aiItems) {
   const groups = {};
   items.forEach(s => {
     const cat = catByName.get(s.name) || '기타';
-    (groups[cat] ||= []).push(s.name);
+    const member = { name: s.name, candidate: candidateByName.get(s.name) || null };
+    (groups[cat] ||= []).push(member);
   });
 
   const total = items.length;

@@ -70,7 +70,19 @@ export function PieChart({ slices, title }) {
               <span className="pie-legend-count">{s.count}개</span>
             </span>
             {expanded === s.label && (
-              <div className="pie-legend-members">{s.members.join(', ')}</div>
+              <div className="pie-legend-members">
+                {s.members.map((m, i) => (
+                  <span key={m.name}>
+                    {i > 0 && ', '}
+                    <span
+                      className={m.candidate ? 'pie-candidate' : undefined}
+                      title={m.candidate ? `신규 카테고리 후보: ${m.candidate}` : undefined}
+                    >
+                      {m.name}
+                    </span>
+                  </span>
+                ))}
+              </div>
             )}
           </div>
         ))}

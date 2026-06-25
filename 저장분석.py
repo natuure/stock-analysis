@@ -26,10 +26,13 @@ def validate_categories(analysis):
     for key in ('거래대금', '등락률'):
         for i, item in enumerate(analysis.get(key, [])):
             cat = item.get('카테고리')
+            name = item.get('종목명', '?')
             if not cat:
-                problems.append(f'{key}[{i}] {item.get("종목명", "?")}: 카테고리 없음')
+                problems.append(f'{key}[{i}] {name}: 카테고리 없음')
             elif cat not in VALID_CATEGORIES:
-                problems.append(f'{key}[{i}] {item.get("종목명", "?")}: 알 수 없는 카테고리 "{cat}"')
+                problems.append(f'{key}[{i}] {name}: 알 수 없는 카테고리 "{cat}"')
+            elif cat != '기타' and item.get('신규카테고리후보'):
+                problems.append(f'{key}[{i}] {name}: 카테고리가 "기타"가 아닌데 신규카테고리후보가 있음')
     return problems
 
 

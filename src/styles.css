@@ -489,6 +489,7 @@ tbody tr.chart-row td { text-align: left; white-space: normal; padding: 0; }
 .pie-legend-members {
   margin: 4px 0 2px 16px; font-size: 11px; color: var(--c-muted); line-height: 1.6;
 }
+.pie-candidate { color: var(--c-up); font-weight: 600; }
 
 /* ── 종목 분석 — 기업개요(적정주가 슬라이더) ─────────────────── */
 .val-section-title {
