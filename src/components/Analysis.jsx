@@ -78,10 +78,11 @@ function ThemeCategoryTrend({ themeTrend }) {
 }
 
 // vol/rate(그날 상위 50, 숫자) + aiItems(aiAnalysis.거래대금/등락률, 종목명+카테고리)를
-// 종목명으로 매칭해 카테고리별로 valueKey를 합산한다 — 거래대금(tradingVolume, 금액)과
-// 등락률(changeRate, %) 양쪽에서 재사용(가중치 기준만 다름). 매칭 실패/카테고리 없음은
-// "기타"로 폴백(수치는 절대 누락되지 않고 항상 기타로 흡수됨 — % 합은 항상 100).
-function aggregateByCategory(items, aiItems, valueKey) {
+// 종목명으로 매칭해 카테고리별 "종목 수"를 센다(금액/등락률 합산이 아니라 단순 개수 —
+// 사용자가 비중 대신 "50개 중 몇 종목" 표시를 명시적으로 요청). 매칭 실패/카테고리 없음은
+// "기타"로 폴백(어떤 종목도 누락되지 않고 항상 기타로 흡수됨 — count 합은 항상 items.length).
+// 카테고리별 종목명 목록(members)도 같이 반환해 범례 클릭 시 펼쳐서 보여주는 데 쓴다.
+function aggregateByCategory(items, aiItems) {
   if (!items || items.length === 0) return null;
 
   const catByName = new Map();
@@ -90,44 +91,39 @@ function aggregateByCategory(items, aiItems, valueKey) {
   // 않고 차트 자체를 숨긴다 — 분류 안 한 것과 분류했더니 전부 기타인 것은 다른 의미.
   if (catByName.size === 0) return null;
 
-  const totals = {};
-  let grandTotal = 0;
+  const groups = {};
   items.forEach(s => {
-    const v = s[valueKey];
-    // 거래대금은 항상 양수지만 등락률(changeRate)은 이론상 음수가 섞일 수 있음(상위 50인데도
-    // 시장 전체에 상승 종목이 50개가 안 되는 극단적인 날) — 음수/0은 "비중"에 의미가 없으니
-    // 분모(grandTotal)에서도 완전히 제외한다. 기타로 흡수하면 음수만큼 다른 슬라이스의 %가
-    // 100%를 넘어버리는 버그가 생김(직접 단위 테스트로 발견, 2026-06-26).
-    if (!isFinite(v) || v <= 0) return;
     const cat = catByName.get(s.name) || '기타';
-    totals[cat] = (totals[cat] || 0) + v;
-    grandTotal += v;
+    (groups[cat] ||= []).push(s.name);
   });
-  if (grandTotal <= 0) return null;
 
+  const total = items.length;
   // "5개+기타"는 분류 단계가 아니라 여기(차트 렌더 집계)에서만 적용 — 그날 실제로는
   // 6개 이상 카테고리가 나올 수 있음.
-  const etcTotal = totals['기타'] || 0;
-  const realCats = Object.entries(totals)
+  const etcMembers = groups['기타'] || [];
+  const realCats = Object.entries(groups)
     .filter(([cat]) => cat !== '기타')
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])); // 동률이면 항상 같은 순서(결정적)
+    .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0])); // 동률이면 항상 같은 순서
 
   const top5 = realCats.slice(0, 5);
-  const restTotal = realCats.slice(5).reduce((sum, [, v]) => sum + v, 0) + etcTotal;
+  const restMembers = realCats.slice(5).flatMap(([, members]) => members).concat(etcMembers);
 
-  const slices = top5.map(([label, value], i) => ({
-    label, value, pct: (value / grandTotal) * 100, color: TREND_PALETTE[i],
+  const slices = top5.map(([label, members], i) => ({
+    label, members, count: members.length, pct: (members.length / total) * 100, color: TREND_PALETTE[i],
   }));
-  if (restTotal > 0) {
+  if (restMembers.length > 0) {
     // "기타"는 진짜 섹터가 아니라 잔여 묶음이라 팔레트 6번째 색이 아닌 muted 회색으로 구분.
-    slices.push({ label: '기타', value: restTotal, pct: (restTotal / grandTotal) * 100, color: 'var(--c-muted)' });
+    slices.push({
+      label: '기타', members: restMembers, count: restMembers.length,
+      pct: (restMembers.length / total) * 100, color: 'var(--c-muted)',
+    });
   }
   return { slices };
 }
 
 function CategoryPieCarousel({ vol, rate, aiAnalysis }) {
-  const volAgg  = useMemo(() => aggregateByCategory(vol,  aiAnalysis?.거래대금 || [], 'tradingVolume'), [vol, aiAnalysis]);
-  const rateAgg = useMemo(() => aggregateByCategory(rate, aiAnalysis?.등락률   || [], 'changeRate'),    [rate, aiAnalysis]);
+  const volAgg  = useMemo(() => aggregateByCategory(vol,  aiAnalysis?.거래대금 || []), [vol, aiAnalysis]);
+  const rateAgg = useMemo(() => aggregateByCategory(rate, aiAnalysis?.등락률   || []), [rate, aiAnalysis]);
   const [page, setPage] = useState(0);
   const scrollerRef = useRef(null);
   if (!volAgg && !rateAgg) return null; // 둘 다 데이터 없으면 섹션 자체를 숨김

@@ -1,3 +1,5 @@
+import { useState, useEffect } from 'react';
+
 // 카테고리 비중 도넛 차트 — TrendChart와 같은 의존성 없는 순수 SVG 컨벤션.
 // TrendChart와 가장 큰 차이: 원이 타원으로 일그러지면 안 되므로 정사각형 viewBox를 쓰고
 // preserveAspectRatio를 기본값(xMidYMid meet)으로 둔다(TrendChart는 막대/꺾은선이라
@@ -25,6 +27,8 @@ function donutSlicePath(startAngle, endAngle) {
 }
 
 export function PieChart({ slices, title }) {
+  const [expanded, setExpanded] = useState(null);
+  useEffect(() => { setExpanded(null); }, [slices]);
   if (!slices || slices.length === 0) return null;
 
   let angle = 0;
@@ -50,17 +54,25 @@ export function PieChart({ slices, title }) {
           )
           : arcs.map((s, i) => (
             <path key={i} d={donutSlicePath(s.start, s.end)} fill={s.color}>
-              <title>{s.label} {s.pct.toFixed(1)}%</title>
+              <title>{s.label} {s.count}개</title>
             </path>
           ))}
       </svg>
       <div className="pie-legend">
         {slices.map(s => (
-          <span className="pie-legend-item" key={s.label}>
-            <i style={{ background: s.color }} />
-            <span className="pie-legend-label">{s.label}</span>
-            <span className="pie-legend-pct">{s.pct.toFixed(1)}%</span>
-          </span>
+          <div className="pie-legend-row" key={s.label}>
+            <span
+              className="pie-legend-item"
+              onClick={() => setExpanded(l => l === s.label ? null : s.label)}
+            >
+              <i style={{ background: s.color }} />
+              <span className="pie-legend-label">{s.label}</span>
+              <span className="pie-legend-count">{s.count}개</span>
+            </span>
+            {expanded === s.label && (
+              <div className="pie-legend-members">{s.members.join(', ')}</div>
+            )}
+          </div>
         ))}
       </div>
     </div>
