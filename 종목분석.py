@@ -52,7 +52,16 @@ NET_INCOME_NAMES = [
     '당기순이익', '당기순이익(손실)', '분기순이익', '분기순이익(손실)', '반기순이익', '반기순이익(손실)',
     '당기순손익',
 ]
-PARENT_EQUITY_NAMES = ['지배기업의 소유주에게 귀속되는 자본', '지배기업소유주지분', '지배기업 소유주지분']
+# '지배기업 소유주지분'(공백 있음)은 재무상태표(BS) 외에 포괄손익계산서(CIS)의 총포괄손익
+# 배분액 항목으로도 쓰여서, extract_account() 호출 시 sj_div='BS'로 한정해야 함(노바렉스에서
+# 직접 확인, 2026-06-25 — BS의 '지배기업의 소유주지분'(200,232,715,328)이 아니라 CIS의
+# 동명 항목(22,035,898,567, 총포괄손익 중 지배기업分)이 잘못 매칭됐던 버그). '지배기업의
+# 소유주지분'('에게 귀속되는 자본' 없이 '의 소유주지분'만 쓰는 표기, 노바렉스에서 확인)과
+# '지배기업의 소유지분'('소유주지분'이 아니라 '소유지분', SK하이닉스에서 확인)도 후보에 추가.
+PARENT_EQUITY_NAMES = [
+    '지배기업의 소유주에게 귀속되는 자본', '지배기업소유주지분', '지배기업 소유주지분',
+    '지배기업의 소유주지분', '지배기업의 소유지분',
+]
 # 매출채권도 회사마다, 같은 회사라도 보고연도마다 이름이 다름(직접 확인, 2026-06-24): 대부분
 # '매출채권' 단독이지만 '매출채권및기타채권'/'매출채권 및 기타유동채권'처럼 기타수취채권과
 # 합쳐서 한 줄로 보고하는 경우도 있음(인지컨트롤스는 2023년엔 후자, 2025년엔 전자를 씀 — 같은
@@ -207,10 +216,15 @@ def fetch_financial_statement(corp_code, bsns_year, reprt_code, fs_div='CFS'):
     return [], fs_div
 
 
-def extract_account(items, names):
-    """items(account_nm 목록)에서 names 중 일치하는 첫 계정의 당기 금액(원 단위)을 찾는다."""
+def extract_account(items, names, sj_div=None):
+    """items(account_nm 목록)에서 names 중 일치하는 첫 계정의 당기 금액(원 단위)을 찾는다.
+    sj_div를 지정하면 그 재무제표 구분(BS/CIS/CF/SCE)에서만 찾는다 — 노바렉스에서 직접 확인한
+    사례처럼, 재무상태표(BS)의 '지배기업의 소유주지분'(지배주주지분 총액)과 거의 같은 이름의
+    '지배기업 소유주지분'이 포괄손익계산서(CIS)에도 있는데 그건 총포괄손익 중 지배기업 귀속분
+    (흐름)일 뿐 지배주주지분 총액(잔액)이 아니라서, sj_div 없이 찾으면 다른 재무제표의 항목이
+    먼저 매칭돼 완전히 다른 값이 나올 수 있다(2026-06-25 발견·수정)."""
     for it in items:
-        if it.get('account_nm') in names:
+        if it.get('account_nm') in names and (sj_div is None or it.get('sj_div') == sj_div):
             try:
                 return float(str(it.get('thstrm_amount', '0')).replace(',', ''))
             except ValueError:
@@ -283,7 +297,7 @@ def fetch_annual_financials(corp_code, years):
             '자산총계': extract_account(items, ['자산총계']),
             '부채총계': extract_account(items, ['부채총계']),
             '자본총계': extract_account(items, ['자본총계']),
-            '지배기업소유주지분': extract_account(items, PARENT_EQUITY_NAMES),
+            '지배기업소유주지분': extract_account(items, PARENT_EQUITY_NAMES, sj_div='BS'),
             '현금및현금성자산': extract_account(items, ['현금및현금성자산']),
             '단기금융상품': extract_account(items, ['단기금융상품']),
             '차입금_추정': extract_account_like(items, '차입금'),
