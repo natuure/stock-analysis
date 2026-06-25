@@ -1,4 +1,5 @@
 const { MongoClient } = require('mongodb');
+const { KIS_BASE, getKisToken } = require('./_kis');
 
 let client = null;
 async function getDb() {
@@ -9,41 +10,12 @@ async function getDb() {
   return client.db();
 }
 
-const KIS_BASE = 'https://openapi.koreainvestment.com:9443';
-
 // count: 화면 표시분 + 이동평균선이 맨 왼쪽까지 끊김 없이 그려지는 데 필요한 선행 데이터 포함
 // lookbackDays: FID_INPUT_DATE_1 계산용 여유 캘린더일 (주말·휴장일 감안)
 const PERIOD_CONFIG = {
   D: { count: 85, lookbackDays: 135 },
   W: { count: 75, lookbackDays: 540 },
 };
-
-async function getKisToken(db) {
-  const tokenCol = db.collection('kis_token');
-  const cached = await tokenCol.findOne({ _id: 'token' });
-  const now = Date.now();
-  if (cached && cached.expiresAt > now + 5 * 60 * 1000) {
-    return cached.accessToken;
-  }
-  const r = await fetch(`${KIS_BASE}/oauth2/tokenP`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json; charset=UTF-8' },
-    body: JSON.stringify({
-      grant_type: 'client_credentials',
-      appkey: process.env.KIS_APP_KEY,
-      appsecret: process.env.KIS_APP_SECRET,
-    }),
-  });
-  const data = await r.json();
-  if (!r.ok) throw new Error(`kis token ${r.status}: ${JSON.stringify(data)}`);
-  const expiresAt = now + data.expires_in * 1000;
-  await tokenCol.updateOne(
-    { _id: 'token' },
-    { $set: { accessToken: data.access_token, expiresAt } },
-    { upsert: true }
-  );
-  return data.access_token;
-}
 
 // dateStr(YYYY-MM-DD) 기준 캘린더일 오프셋을 적용한 YYYYMMDD 반환 (KST/UTC 변환 오차 방지를 위해 UTC 기준 순수 날짜 연산만 수행)
 function ymd(dateStr, offsetDays) {

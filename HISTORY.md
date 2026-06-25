@@ -105,3 +105,11 @@
   `CAPITAL_SURPLUS_NAMES`에 `기타불입자본`을 추가하고, `extract_eps()`에 일반 투자자 기준인
   `보통주기본주당이익`을 찾는 폴백을 추가(우선주 EPS는 오매칭 위험 때문에 후보에서 제외)해
   재실행, 정상값 확인 ([DATA_PIPELINE.md](DATA_PIPELINE.md) 참고)
+- **기업개요 quote를 종목분석.py 실행 시점 가격에 고정해서 쓰던 방식 → 검색 시점 실시간
+  조회로 교체** (2026-06-25, 사용자 제보): 종목분석.py가 MongoDB에 저장하는 `quote`를 그대로
+  화면에 쓰면, 스크립트를 실행한 날 가격에 PER/PBR이 계속 고정돼버리는 문제가 있었음.
+  `api/getCompanyOverview.js`가 `?code=` 단건 조회 시 KIS Open API로 현재가를 실시간으로
+  다시 받아와 `quote`를 덮어쓰도록 변경(`api/candles.js`와 같은 "실시간 우선, 실패 시 저장값
+  폴백" 패턴) — 저장된 `quote`는 이제 KIS 호출 실패 시에만 쓰는 폴백. KIS 접근토큰 발급·캐싱
+  로직(`getKisToken`)을 candles.js에서 신설 `api/_kis.js`로 옮겨 두 라우트가 공유하도록 정리
+  ([DATA_PIPELINE.md](DATA_PIPELINE.md), [ARCHITECTURE.md](ARCHITECTURE.md) 참고)
