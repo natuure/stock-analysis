@@ -46,7 +46,12 @@ LATEST_REPORT_PROBE_ORDER = [ANNUAL_REPORT, QUARTER_REPORTS[2], QUARTER_REPORTS[
 # 사업보고서(연간)는 '당기순이익', 분기·반기보고서는 회사에 따라 '분기순이익'/'반기순이익'을 씀.
 # 지배주주지분도 회사별로 '지배기업소유주지분'(공백 없음)/'지배기업 소유주지분'(공백)/
 # '지배기업의 소유주에게 귀속되는 자본' 셋 다 쓰인다 — 후보를 넉넉히 둬야 누락이 줄어든다.
-NET_INCOME_NAMES = ['당기순이익', '당기순이익(손실)', '분기순이익', '분기순이익(손실)', '반기순이익', '반기순이익(손실)']
+# 화신은 '당기순이익' 대신 '당기순손익'(이익 대신 손익 — 음수도 가능하다는 의미로 더 정확한
+# 표기, 직접 확인 2026-06-25)을 씀.
+NET_INCOME_NAMES = [
+    '당기순이익', '당기순이익(손실)', '분기순이익', '분기순이익(손실)', '반기순이익', '반기순이익(손실)',
+    '당기순손익',
+]
 PARENT_EQUITY_NAMES = ['지배기업의 소유주에게 귀속되는 자본', '지배기업소유주지분', '지배기업 소유주지분']
 # 매출채권도 회사마다, 같은 회사라도 보고연도마다 이름이 다름(직접 확인, 2026-06-24): 대부분
 # '매출채권' 단독이지만 '매출채권및기타채권'/'매출채권 및 기타유동채권'처럼 기타수취채권과
@@ -87,6 +92,9 @@ EPS_NAMES = [
     '기본 주당이익', '기본주당이익', '기본 주당이익(손실)', '기본주당이익(손실)',
     '기본주당분기순이익', '기본주당순이익', '기본주당순이익(손실)',
 ]
+# 영업이익도 화신은 '영업손익'(이익 대신 손익, 분기보고서에서 직접 확인 2026-06-25)을 씀 —
+# 당기순손익과 같은 맥락.
+OPERATING_INCOME_NAMES = ['영업이익', '영업이익(손실)', '영업손익']
 
 
 # ── DART corp_code 매핑 (종목명 → corp_code) ─────────────────────────────────
@@ -267,7 +275,7 @@ def fetch_annual_financials(corp_code, years):
         annual[str(year)] = {
             'fs_div': fs_div,
             '매출액': extract_account(items, REVENUE_NAMES),
-            '영업이익': extract_account(items, ['영업이익', '영업이익(손실)']),
+            '영업이익': extract_account(items, OPERATING_INCOME_NAMES),
             # 주의: 지배주주지분 계정명(PARENT_EQUITY_NAMES)을 당기순이익 후보에 넣으면 안 됨
             # — BS(재무상태표)에도 같은 이름의 항목이 있어 자본 항목이 먼저 매칭되는 버그가 났었음.
             '당기순이익': extract_account(items, NET_INCOME_NAMES),
@@ -304,7 +312,7 @@ def fetch_quarters(corp_code, specs):
         quarters.append({
             'year': year, 'reprt_code': code, 'label': label, 'fs_div': fs_div,
             '매출액': extract_account(items, REVENUE_NAMES),
-            '영업이익': extract_account(items, ['영업이익', '영업이익(손실)']),
+            '영업이익': extract_account(items, OPERATING_INCOME_NAMES),
             '당기순이익': extract_account(items, NET_INCOME_NAMES),
             # 분기 EPS는 그 분기 자체 실적 기준(누적이 아님) — 추세 차트에서 연환산 없이 그대로
             # 보여주는 용도(사용자 요청, 2026-06-25).
