@@ -71,7 +71,7 @@ function PriceRow({ current, fair }) {
   return (
     <div className="val-price-row">
       <span className="val-current-price">
-        {current != null && isFinite(current) ? `${fmtN(current)}원` : '-'}
+        {current != null && isFinite(current) ? `현재가: ${fmtN(current)}원` : '-'}
       </span>
       <span className="val-fair-price">
         {fair != null && isFinite(fair) ? `${fmtN(fair)}원` : '-'}
