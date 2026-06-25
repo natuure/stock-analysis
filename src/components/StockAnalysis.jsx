@@ -63,7 +63,13 @@ function IncomeStatementView({ data }) {
     영업이익: p.영업이익 != null ? p.영업이익 / 1e8 : null,
     당기순이익: p.당기순이익 != null ? p.당기순이익 / 1e8 : null,
   }));
-  const marginPeriods = periods.map(p => ({ label: p.label, 영업이익률: ratioOf(p.영업이익, p.매출액) }));
+  // ROE = 당기순이익 / 지배기업소유주지분(분기엔 없어 자본총계로 대체) — 분기도 연환산 안
+  // 하고 그 기간 실적 그대로(영업이익률과 같은 방식, 2026-06-27 ROE 라인 추가).
+  const marginPeriods = periods.map(p => ({
+    label: p.label,
+    영업이익률: ratioOf(p.영업이익, p.매출액),
+    ROE: ratioOf(p.당기순이익, p.지배기업소유주지분 || p.자본총계),
+  }));
   const epsPeriods = periods.map(p => ({ label: p.label, 주당순이익: p.기본주당이익_DART }));
 
   return (
@@ -81,10 +87,11 @@ function IncomeStatementView({ data }) {
         { key: '영업이익', label: '영업이익', color: TREND_PALETTE[1] },
         { key: '당기순이익', label: '당기순이익', color: TREND_PALETTE[2] },
       ]} />
-      <TrendChart type="line" title="영업이익률 추이 (%)" periods={marginPeriods} metrics={[
+      <TrendChart type="line" title="영업이익률·ROE 추이 (%)" periods={marginPeriods} showValues valueFormatter={fmtPct} metrics={[
         { key: '영업이익률', label: '영업이익률', color: TREND_PALETTE[0] },
+        { key: 'ROE',       label: 'ROE',       color: TREND_PALETTE[1] },
       ]} />
-      <TrendChart type="line" title="주당순이익 추이 (원)" periods={epsPeriods} metrics={[
+      <TrendChart type="line" title="주당순이익 추이 (원)" periods={epsPeriods} showValues valueFormatter={fmtWon} metrics={[
         { key: '주당순이익', label: '주당순이익', color: TREND_PALETTE[1] },
       ]} />
     </div>

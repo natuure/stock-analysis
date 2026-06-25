@@ -2,8 +2,11 @@
 // 종목 분석 탭(재무 추이)과 거래대금·등락률 분석 탭(테마 카테고리 추이)이 공유한다.
 export const TREND_PALETTE = ['#3182f6', '#9b59b6', '#f04452', '#2ecc71', '#f39c12', '#1abc9c'];
 
-export function TrendChart({ periods, metrics, type, title }) {
-  const W = 600, H = 130, PAD_L = 6, PAD_R = 6, PAD_T = 10, PAD_B = 8;
+export function TrendChart({ periods, metrics, type, title, showValues, valueFormatter = v => v.toFixed(1) }) {
+  // showValues는 라인 차트에서 각 표식 위에 값을 숫자로 같이 보여준다(2026-06-27, 사용자
+  // 요청 — 막대 차트는 길이로 이미 값이 보이니 적용 안 함). 표식 위 라벨이 들어갈 자리가
+  // 필요해서 위쪽 여백(PAD_T)을 더 둔다.
+  const W = 600, H = 130, PAD_L = 6, PAD_R = 6, PAD_T = showValues ? 22 : 10, PAD_B = 8;
   const plotW = W - PAD_L - PAD_R;
   const plotH = H - PAD_T - PAD_B;
   const n = periods.length;
@@ -41,7 +44,14 @@ export function TrendChart({ periods, metrics, type, title }) {
                 <g key={m.key}>
                   <polyline points={pts} fill="none" stroke={m.color} strokeWidth="2" />
                   {periods.map((p, i) => p[m.key] != null && (
-                    <circle key={i} cx={cx(i)} cy={y(p[m.key])} r="2.5" fill={m.color} />
+                    <g key={i}>
+                      <circle cx={cx(i)} cy={y(p[m.key])} r="2.5" fill={m.color} />
+                      {showValues && (
+                        <text x={cx(i)} y={y(p[m.key]) - 6} textAnchor="middle" className="trend-point-label" fill={m.color}>
+                          {valueFormatter(p[m.key])}
+                        </text>
+                      )}
+                    </g>
                   ))}
                 </g>
               );
