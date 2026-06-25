@@ -159,7 +159,7 @@ function BalanceSheetView({ data }) {
         { key: '매출채권', label: '매출채권', color: TREND_PALETTE[2] },
         { key: '현금',    label: '현금',    color: TREND_PALETTE[3] },
       ]} />
-      <TrendChart type="line" title="부채비율 추이 (%)" periods={debtPeriods} metrics={[
+      <TrendChart type="line" title="부채비율 추이 (%)" periods={debtPeriods} showValues valueFormatter={fmtPct} metrics={[
         { key: '부채비율', label: '부채비율', color: TREND_PALETTE[2] },
       ]} />
       <TrendChart type="bar" title="선수금·자본금·자본잉여금·이익잉여금 추이 (억원)" periods={amountPeriods} metrics={[

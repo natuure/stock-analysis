@@ -4,9 +4,15 @@ export const TREND_PALETTE = ['#3182f6', '#9b59b6', '#f04452', '#2ecc71', '#f39c
 
 export function TrendChart({ periods, metrics, type, title, showValues, valueFormatter = v => v.toFixed(1) }) {
   // showValues는 라인 차트에서 각 표식 위에 값을 숫자로 같이 보여준다(2026-06-27, 사용자
-  // 요청 — 막대 차트는 길이로 이미 값이 보이니 적용 안 함). 표식 위 라벨이 들어갈 자리가
-  // 필요해서 위쪽 여백(PAD_T)을 더 둔다.
-  const W = 600, H = 130, PAD_L = 6, PAD_R = 6, PAD_T = showValues ? 22 : 10, PAD_B = 8;
+  // 요청 — 막대 차트는 길이로 이미 값이 보이니 적용 안 함). 라벨이 들어갈 위쪽 여백(PAD_T)을
+  // 더 두는 것만으론 부족함 — 두 계열의 값이 서로 가까우면(예: ROE 8.1%·영업이익률 6.2%처럼
+  // 차이가 작으면) 점 사이 간격 자체가 좁아서 라벨끼리 겹친다(글꼴 크기는 고정인데 같은 비율로
+  // 줄어들지 않으므로 차트를 단순히 더 "늘려서" 그리는 건 효과가 없음 — viewBox를 그대로 두고
+  // CSS 높이만 키우면 폰트도 같이 커져서 간격 대비 비율이 똑같이 유지됨). 그래서 showValues일
+  // 때는 내부 좌표계 자체(H)를 키워 플롯 영역(plotH)을 넓히고, SVG 렌더 높이도 그만큼 같이
+  // 키워서(1유닛=1px 유지) 점과 점 사이의 실제 화면 간격을 넓힌다 — 글꼴 크기(9유닛)는 그대로라
+  // 상대적으로 더 여유로워짐.
+  const W = 600, H = showValues ? 240 : 130, PAD_L = 6, PAD_R = 6, PAD_T = showValues ? 24 : 10, PAD_B = 8;
   const plotW = W - PAD_L - PAD_R;
   const plotH = H - PAD_T - PAD_B;
   const n = periods.length;
@@ -23,7 +29,7 @@ export function TrendChart({ periods, metrics, type, title, showValues, valueFor
   return (
     <div className="trend-chart-block">
       {title && <div className="trend-chart-title">{title}</div>}
-      <svg className="trend-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+      <svg className="trend-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ height: H }}>
         <line x1={PAD_L} x2={W - PAD_R} y1={zeroY} y2={zeroY} className="trend-axis" />
         {type === 'bar'
           ? metrics.map((m, mi) => periods.map((p, i) => {
