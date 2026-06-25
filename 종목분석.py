@@ -73,7 +73,10 @@ ACCOUNTS_RECEIVABLE_NAMES = ['매출채권', '매출채권및기타채권', '매
 INVENTORY_NAMES = ['재고자산', '유동재고자산']
 # 자본잉여금도 회사마다 다름: 삼성전자처럼 '자본잉여금' 합계줄 자체가 없고 세부 항목인
 # '주식발행초과금'만 보고하는 경우가 있음(직접 확인) — 이 경우 주식발행초과금을 대신 씀.
-CAPITAL_SURPLUS_NAMES = ['자본잉여금', '주식발행초과금']
+# 대한항공은 '자본잉여금'을 전혀 안 쓰고 '기타불입자본'으로 보고함 — 자본금+기타불입자본+
+# 이익잉여금+기타자본구성요소를 더하면 지배기업소유주지분과 정확히 일치함을 대조 확인
+# (직접 확인, 2026-06-25).
+CAPITAL_SURPLUS_NAMES = ['자본잉여금', '주식발행초과금', '기타불입자본']
 # 선수금은 2018년 수익인식기준(K-IFRS 1115) 도입 이후 '계약부채'로 대체 표기하는 회사도 있음.
 ADVANCE_RECEIPTS_NAMES = ['선수금', '계약부채']
 # 매출액도 '매출액'/'영업수익' 둘 다 없이 '수익(매출액)'만 쓰는 회사가 있음(일지테크 2025년
@@ -242,10 +245,13 @@ def extract_eps(items, sj_div=None):
     if eps is not None:
         return eps
     continuing = extract_account(items, ['계속영업 기본주당순이익'], sj_div=sj_div)
-    if continuing is None:
-        return None
-    discontinued = extract_account(items, ['중단영업 기본주당순이익'], sj_div=sj_div) or 0
-    return continuing + discontinued
+    if continuing is not None:
+        discontinued = extract_account(items, ['중단영업 기본주당순이익'], sj_div=sj_div) or 0
+        return continuing + discontinued
+    # 우선주가 있는 회사(대한항공)는 분기보고서에서 보통주·우선주 EPS를 따로 보고하기도 함 —
+    # 일반 투자자가 보는 보통주 기준만 쓴다(직접 확인, 2026-06-25). 우선주 EPS는 후보에 일부러
+    # 안 넣음 — 같은 목록에 두면 API 응답에서 우선주 쪽이 먼저 나와 잘못 매칭될 위험이 있음.
+    return extract_account(items, ['보통주기본주당이익'], sj_div=sj_div)
 
 
 def extract_account_like(items, keyword, sj_div='BS'):
