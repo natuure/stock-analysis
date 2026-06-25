@@ -54,8 +54,13 @@
 - PER(후행/선행)·PBR·ROE·EV/EBITDA 5개 지표를 `.fin-card`로 표시 후, "적정주가" 섹션에 PER법·
   PBR법·EV/EBITDA법·DCF법 4개 카드(`.val-grid`, 데스크톱 2열 → 767px 이하 1열)를 보여줌. 각
   카드는 가로 슬라이더(`<input type=range>`, `.val-slider-input`)로 목표 PER/PBR/EV·EBITDA
-  배수 또는 WACC 할인율을 조절하면 적정주가(`.val-fair-price`)가 실시간 재계산됨(React state,
-  헤드리스 브라우저로 슬라이더 드래그 시 값이 실제로 바뀌는 것까지 확인함).
+  배수 또는 WACC 할인율을 조절하면 적정주가가 실시간 재계산됨(React state, 헤드리스 브라우저로
+  슬라이더 드래그 시 값이 실제로 바뀌는 것까지 확인함). **각 카드 맨 아래엔 `PriceRow`가
+  현재가(왼쪽, `.val-current-price`, 회색)와 적정주가(오른쪽, `.val-fair-price`, 진한 글자)를
+  같은 글자 크기(22px)로 나란히 보여줌**(`.val-price-row`, `justify-content: space-between`,
+  2026-06-25 추가, 사용자 요청) — 적정주가만 있던 이전 `FairPrice`를 두 값을 같이 받는
+  `PriceRow`로 교체. 현재가는 `CompanyOverviewView`가 `fin.price`(= `api/getCompanyOverview.js`가
+  검색 시점에 KIS로 받아온 실시간 현재가)를 4개 카드 모두에 `currentPrice` prop으로 내려줌.
 - **데이터는 `StockAnalysis.jsx`가 검색 결과로 받은 `data` prop**(종목분석.py 출력과 동일한
   구조: `quote`+`annual_financials`+`quarterly_financials`+`latest_report`) — 자체적으로
   fetch하거나 import하지 않는 순수 표시 컴포넌트. 이전에는 고정 샘플 1건(`src/data/

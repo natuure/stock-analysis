@@ -493,9 +493,14 @@ tbody tr.chart-row td { text-align: left; white-space: normal; padding: 0; }
   width: 18px; height: 18px; border-radius: 50%; border: none;
   background: var(--c-primary); cursor: pointer; box-shadow: var(--shadow-card);
 }
+.val-price-row { display: flex; align-items: baseline; justify-content: space-between; }
+.val-current-price {
+  font-size: 22px; color: var(--c-muted);
+  font-variant-numeric: tabular-nums;
+}
 .val-fair-price {
   font-size: 22px; font-weight: 700; color: var(--c-heading);
-  font-variant-numeric: tabular-nums; text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 @media (max-width: 767px) {
   .stock-analysis-tabs { grid-template-columns: repeat(2, 1fr); }
