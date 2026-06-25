@@ -472,9 +472,12 @@ tbody tr.chart-row td { text-align: left; white-space: normal; padding: 0; }
 }
 .pie-carousel::-webkit-scrollbar { display: none; }
 .pie-carousel-page { flex: 0 0 100%; scroll-snap-align: start; }
-.pie-carousel-dots { display: flex; justify-content: center; gap: 6px; margin-top: 10px; }
-.pie-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--c-border); }
-.pie-dot.active { background: var(--c-primary); }
+.pie-carousel-dots { display: flex; justify-content: center; gap: 2px; margin-top: 10px; }
+.pie-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--c-border);
+  cursor: pointer; padding: 6px; background-clip: content-box;
+}
+.pie-dot.active { background-color: var(--c-primary); }
 .pie-chart-wrap  { display: flex; flex-direction: column; align-items: center; gap: 12px; }
 .pie-chart-svg   { width: 100%; max-width: 220px; aspect-ratio: 1 / 1; display: block; }
 .pie-legend      { display: flex; flex-direction: column; gap: 6px; width: 100%; }

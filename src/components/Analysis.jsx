@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { TrendChart, TREND_PALETTE } from './TrendChart';
 import { PieChart } from './PieChart';
 
@@ -129,11 +129,20 @@ function CategoryPieCarousel({ vol, rate, aiAnalysis }) {
   const volAgg  = useMemo(() => aggregateByCategory(vol,  aiAnalysis?.거래대금 || [], 'tradingVolume'), [vol, aiAnalysis]);
   const rateAgg = useMemo(() => aggregateByCategory(rate, aiAnalysis?.등락률   || [], 'changeRate'),    [rate, aiAnalysis]);
   const [page, setPage] = useState(0);
+  const scrollerRef = useRef(null);
   if (!volAgg && !rateAgg) return null; // 둘 다 데이터 없으면 섹션 자체를 숨김
+
+  // 터치 스와이프가 없는 데스크톱(마우스)에서도 페이지를 넘길 수 있게 점을 클릭 가능하게 함
+  // — 스크롤바를 숨겨놔서(.pie-carousel) 스와이프 말고는 페이지를 옮길 방법이 없었음.
+  function goTo(i) {
+    scrollerRef.current?.scrollTo({ left: i * scrollerRef.current.clientWidth, behavior: 'smooth' });
+    setPage(i);
+  }
 
   return (
     <div className="pie-carousel-block">
       <div
+        ref={scrollerRef}
         className="pie-carousel"
         onScroll={e => setPage(Math.round(e.target.scrollLeft / e.target.clientWidth))}
       >
@@ -145,8 +154,8 @@ function CategoryPieCarousel({ vol, rate, aiAnalysis }) {
         </div>
       </div>
       <div className="pie-carousel-dots">
-        <span className={`pie-dot${page === 0 ? ' active' : ''}`} />
-        <span className={`pie-dot${page === 1 ? ' active' : ''}`} />
+        <span className={`pie-dot${page === 0 ? ' active' : ''}`} onClick={() => goTo(0)} />
+        <span className={`pie-dot${page === 1 ? ' active' : ''}`} onClick={() => goTo(1)} />
       </div>
     </div>
   );
