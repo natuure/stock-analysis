@@ -86,6 +86,9 @@ function aggregateByCategory(items, aiItems, valueKey) {
 
   const catByName = new Map();
   (aiItems || []).forEach(it => { if (it.카테고리) catByName.set(it.종목명, it.카테고리); });
+  // 그날 카테고리가 하나도 없으면(2026-06-26 이전 날짜 등 미백필분) "전부 기타"로 보여주지
+  // 않고 차트 자체를 숨긴다 — 분류 안 한 것과 분류했더니 전부 기타인 것은 다른 의미.
+  if (catByName.size === 0) return null;
 
   const totals = {};
   let grandTotal = 0;
