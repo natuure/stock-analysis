@@ -16,6 +16,11 @@
   축소 — 안 줄이면 2열 폭에서 "기업개요" 같은 4글자 라벨도 줄바꿈되어 깨짐, 직접 확인함).
   클릭하면 `active` 상태만 토글되고(파란 테두리+파란 글자) 해당 버튼의 뷰가 표시됨. 현금흐름표는
   아직 "준비 중" placeholder. 기업개요는 아래 별도 절 참고.
+- **`target` prop으로 외부에서 검색 트리거**(2026-06-28 추가) — 거래대금·등락률 표의 "이동"
+  버튼(`Tables.jsx`)이 `App.jsx`의 `stockJumpTarget` state를 채우면 그 값이 `target`으로
+  전달돼, `useEffect([target])`가 검색창에 그 종목명을 채우고 검색을 자동 실행(`active`도
+  `'overview'`로 맞춤). 폼 제출로 직접 검색하는 경로와 `runSearch(name)` 함수를 공유 —
+  `handleSearch`(폼 제출)는 `runSearch(query.trim())`을 부르는 얇은 래퍼.
 - **손익계산서·재무상태표 연동**(2026-06-25): `IncomeStatementView`/`BalanceSheetView`가
   `companyData`(검색으로 받은 종목분석.py 출력)를 `data` prop으로 받아 `annual_financials`의
   가장 최근 연도 값으로 계산함(`lastAnnual()`). 손익계산서는 매출액·영업이익·영업이익률(영업이익
@@ -201,9 +206,20 @@ meet`)으로 둔다는 점**(`TrendChart`는 막대/꺾은선이라 `none`으로
 - 거래대금·등락률 탭 전환 (모바일)
 - 컬럼 클릭 정렬 (asc/desc)
 - **거래대금 컬럼**: 순위 | 종목명 | 현재가 | 등락률 | 60일 신고가대비 | 거래대금/시가총액 | 거래대금
+  | 종목분석(2026-06-28 추가)
   (거래대금/시가총액 열은 처음엔 맨 앞이었다가 2026-06-22에 60일 신고가대비와 거래대금 사이로
   옮김 — 순위·종목명이 다시 표준 위치라 별도 CSS 재매핑 불필요해짐)
-- **등락률 컬럼**: 순위 | 종목명 | 현재가 | 등락률 | 60일 신고가대비
+- **등락률 컬럼**: 순위 | 종목명 | 현재가 | 등락률 | 60일 신고가대비 | 종목분석(2026-06-28 추가)
+- **"종목분석" 열 — "이동" 버튼**(2026-06-28, 사용자 요청): 누르면 "종목 분석" 탭으로
+  전환되고 그 종목명으로 자동 검색돼 기업개요가 바로 보임. `App.jsx`가
+  `stockJumpTarget`({name, ts} — ts는 같은 종목을 연달아 눌러도 항상 새 객체가 되게 하는
+  용도) state를 갖고 `<Tables onJumpToStock={...}>`(버튼 클릭 시 이 state를 채우고
+  `topTab`을 `'stock'`으로 전환)와 `<StockAnalysis target={stockJumpTarget}>`에 모두
+  내려준다. `StockAnalysis.jsx`는 `target`이 바뀔 때마다 `useEffect`로 검색창에 그 이름을
+  채우고 기존 검색 로직(`runSearch`, 폼 제출 핸들러와 공유)을 그대로 실행 — 이미 분석된
+  종목이면 즉시 표시, 아니면 `api/analyzeCompany`로 즉석분석(2026-06-27 도입) 후 표시.
+  버튼 클릭이 행의 차트 펼침 토글을 같이 발동시키지 않도록 `onClick`에서
+  `e.stopPropagation()` 호출.
 - 등락률 표 제목 옆에 "(거래대금 300억 이상)" 보조 설명 표시(2026-06-22, `.tbl-head-note`) —
   후보 종목 필터 기준(`RATE_MIN_AMOUNT`)을 화면에도 명시 ([DATA_PIPELINE.md](DATA_PIPELINE.md) 참고)
 - 60일 신고가대비(`high60Rate`): 항상 0% 이하(0 = 60일 신고가), 데이터 없으면 '-'

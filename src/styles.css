@@ -290,6 +290,11 @@ tbody td:nth-child(2) { text-align: left; font-weight: 600; }
 tbody tr.chart-row { cursor: default; }
 tbody tr.chart-row:hover { background: transparent; }
 tbody tr.chart-row td { text-align: left; white-space: normal; padding: 0; }
+.stock-jump-btn {
+  padding: 4px 10px; border-radius: var(--r-sm);
+  background: var(--c-primary); color: #fff;
+  font-size: 11px; font-weight: 600; white-space: nowrap;
+}
 
 /* ── Mobile tabs ──────────────────────────────────────────── */
 .seg-tabs { display: none; background: var(--c-surface); border-radius: var(--r-md); padding: 4px; margin-bottom: 12px; }

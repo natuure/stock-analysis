@@ -172,7 +172,7 @@ function BalanceSheetView({ data }) {
   );
 }
 
-export default function StockAnalysis() {
+export default function StockAnalysis({ target }) {
   const [active, setActive] = useState(null);
   const [query, setQuery] = useState('');
   const [companyList, setCompanyList] = useState([]);
@@ -186,9 +186,17 @@ export default function StockAnalysis() {
       .catch(() => {});
   }, []);
 
-  function handleSearch(e) {
-    e.preventDefault();
-    const name = query.trim();
+  // 거래대금/등락률 표의 "이동" 버튼 클릭(App.jsx의 target prop, 클릭마다 새 객체라 매번
+  // 재실행됨) — 그 종목명으로 검색을 그대로 실행하고 기업개요 탭을 보여준다.
+  useEffect(() => {
+    if (!target) return;
+    setQuery(target.name);
+    setActive('overview');
+    runSearch(target.name);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target]);
+
+  function runSearch(name) {
     if (!name) return;
     if (status === 'loading' || status === 'analyzing') return; // 중복 제출 가드
 
@@ -228,6 +236,11 @@ export default function StockAnalysis() {
         }
       })
       .catch(() => setStatus('error'));
+  }
+
+  function handleSearch(e) {
+    e.preventDefault();
+    runSearch(query.trim());
   }
 
   return (

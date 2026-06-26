@@ -24,7 +24,7 @@ function useCardWidth() {
   return [ref, width];
 }
 
-function VolTable({ vol, sort, onSort, dateISO, cardWidth }) {
+function VolTable({ vol, sort, onSort, dateISO, cardWidth, onJumpToStock }) {
   const [expandedCode, setExpandedCode] = useState(null);
   useEffect(() => { setExpandedCode(null); }, [vol]);
   const toggleRow = (code) => setExpandedCode(c => c === code ? null : code);
@@ -55,6 +55,7 @@ function VolTable({ vol, sort, onSort, dateISO, cardWidth }) {
           {th('high60Rate', '60일 신고가대비')}
           {th('ratio', '거래대금/시가총액')}
           {th('tradingVolume', '거래대금(백만원)')}
+          <th>종목분석</th>
         </tr>
       </thead>
       <tbody>
@@ -68,10 +69,19 @@ function VolTable({ vol, sort, onSort, dateISO, cardWidth }) {
               <td>{s.high60Rate != null ? `${s.high60Rate.toFixed(2)}%` : '-'}</td>
               <td>{s.ratio != null ? s.ratio.toFixed(2) : '-'}</td>
               <td>{fmtN(s.tradingVolume)}</td>
+              <td>
+                <button
+                  type="button"
+                  className="stock-jump-btn"
+                  onClick={(e) => { e.stopPropagation(); onJumpToStock(s.name); }}
+                >
+                  이동
+                </button>
+              </td>
             </tr>
             {expandedCode === s.code && (
               <tr className="chart-row">
-                <td colSpan={7}>
+                <td colSpan={8}>
                   <StockChartPanel code={s.code} dateISO={dateISO} maxWidth={cardWidth ? `${cardWidth}px` : undefined} />
                 </td>
               </tr>
@@ -83,7 +93,7 @@ function VolTable({ vol, sort, onSort, dateISO, cardWidth }) {
   );
 }
 
-function RateTable({ rate, sort, onSort, dateISO, cardWidth }) {
+function RateTable({ rate, sort, onSort, dateISO, cardWidth, onJumpToStock }) {
   const [expandedCode, setExpandedCode] = useState(null);
   useEffect(() => { setExpandedCode(null); }, [rate]);
   const toggleRow = (code) => setExpandedCode(c => c === code ? null : code);
@@ -111,6 +121,7 @@ function RateTable({ rate, sort, onSort, dateISO, cardWidth }) {
           {th('price', '현재가')}
           {th('changeRate', '등락률')}
           {th('high60Rate', '60일 신고가대비')}
+          <th>종목분석</th>
         </tr>
       </thead>
       <tbody>
@@ -122,10 +133,19 @@ function RateTable({ rate, sort, onSort, dateISO, cardWidth }) {
               <td>{fmtN(s.price)}</td>
               <td className={rc(s.changeRate)}>{s.changeRate >= 0 ? '+' : ''}{s.changeRate.toFixed(2)}%</td>
               <td>{s.high60Rate != null ? `${s.high60Rate.toFixed(2)}%` : '-'}</td>
+              <td>
+                <button
+                  type="button"
+                  className="stock-jump-btn"
+                  onClick={(e) => { e.stopPropagation(); onJumpToStock(s.name); }}
+                >
+                  이동
+                </button>
+              </td>
             </tr>
             {expandedCode === s.code && (
               <tr className="chart-row">
-                <td colSpan={5}>
+                <td colSpan={6}>
                   <StockChartPanel code={s.code} dateISO={dateISO} maxWidth={cardWidth ? `${cardWidth}px` : undefined} />
                 </td>
               </tr>
@@ -137,7 +157,7 @@ function RateTable({ rate, sort, onSort, dateISO, cardWidth }) {
   );
 }
 
-export default function Tables({ vol, rate, sortV, sortR, tab, onSort, onTab, dateISO }) {
+export default function Tables({ vol, rate, sortV, sortR, tab, onSort, onTab, dateISO, onJumpToStock }) {
   const [cardRefV, cardWidthV] = useCardWidth();
   const [cardRefR, cardWidthR] = useCardWidth();
   return (
@@ -149,11 +169,11 @@ export default function Tables({ vol, rate, sortV, sortR, tab, onSort, onTab, da
       <div className="tables-grid">
         <div className={`tbl-card${tab === 'r' ? ' mobile-hidden' : ''}`} ref={cardRefV}>
           <div className="tbl-head"><div className="tbl-head-title">거래대금 상위 50위</div></div>
-          <div className="tbl-wrap"><VolTable vol={vol} sort={sortV} onSort={onSort} dateISO={dateISO} cardWidth={cardWidthV} /></div>
+          <div className="tbl-wrap"><VolTable vol={vol} sort={sortV} onSort={onSort} dateISO={dateISO} cardWidth={cardWidthV} onJumpToStock={onJumpToStock} /></div>
         </div>
         <div className={`tbl-card${tab === 'v' ? ' mobile-hidden' : ''}`} ref={cardRefR}>
           <div className="tbl-head"><div className="tbl-head-title">등락률 상위 50위 <span className="tbl-head-note">(거래대금 300억 이상)</span></div></div>
-          <div className="tbl-wrap"><RateTable rate={rate} sort={sortR} onSort={onSort} dateISO={dateISO} cardWidth={cardWidthR} /></div>
+          <div className="tbl-wrap"><RateTable rate={rate} sort={sortR} onSort={onSort} dateISO={dateISO} cardWidth={cardWidthR} onJumpToStock={onJumpToStock} /></div>
         </div>
       </div>
     </>

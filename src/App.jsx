@@ -27,6 +27,7 @@ export default function App() {
   const [tab,   setTab]   = useState('v');
 
   const [topTab, setTopTab] = useState('main');
+  const [stockJumpTarget, setStockJumpTarget] = useState(null);
 
   const [aiAnalysis,  setAiAnalysis]  = useState(null);
   const [serverDates, setServerDates] = useState([]);
@@ -111,6 +112,13 @@ export default function App() {
     });
   }
 
+  // 거래대금·등락률 표의 "이동" 버튼 — 종목 분석 탭으로 전환하고 그 종목을 바로 검색한다.
+  // 매번 새 객체를 만들어야 같은 종목을 연달아 눌러도 StockAnalysis의 useEffect가 다시 실행됨.
+  function jumpToStockAnalysis(name) {
+    setStockJumpTarget({ name, ts: Date.now() });
+    setTopTab('stock');
+  }
+
   function calMove(dir) {
     setCalMonth(m => {
       const nm = m + dir;
@@ -165,12 +173,13 @@ export default function App() {
                 onSort={handleSort}
                 onTab={setTab}
                 dateISO={dateToISO(date)}
+                onJumpToStock={jumpToStockAnalysis}
               />
             </main>
           )}
         </>
       )}
-      {topTab === 'stock'    && <StockAnalysis />}
+      {topTab === 'stock'    && <StockAnalysis target={stockJumpTarget} />}
       {topTab === 'screener' && <div className="tab-placeholder">조건 검색 — 준비 중입니다</div>}
     </div>
   );
