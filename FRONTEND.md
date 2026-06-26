@@ -21,6 +21,13 @@
   전달돼, `useEffect([target])`가 검색창에 그 종목명을 채우고 검색을 자동 실행(`active`도
   `'overview'`로 맞춤). 폼 제출로 직접 검색하는 경로와 `runSearch(name)` 함수를 공유 —
   `handleSearch`(폼 제출)는 `runSearch(query.trim())`을 부르는 얇은 래퍼.
+- **검색마다 분석 종목 목록을 새로 받아옴**(2026-06-28 추가) — `runSearch(name)`이 매칭을
+  판단하기 전에 `/api/getCompanyOverview`를 다시 호출해 `companyList`를 갱신한다. 마운트
+  시 한 번만 받아둔 목록을 계속 쓰면, 그 이후 서버에 새로 추가된 종목(`주도주분석.py` 일괄
+  실행 등)을 모른 채 이미 분석돼 있는데도 즉석분석(느린 경로)을 타 버리는 문제가 있었음
+  (사용자 제보 — "주도주분석.py 미리 돌려놔도 검색이 바로 안 보임"). `api/analyzeCompany.js`
+  쪽도 이미 최신이면 재분석 없이 즉시 반환하도록 같이 고쳐서(ARCHITECTURE.md 참고) 이중으로
+  방지.
 - **손익계산서·재무상태표 연동**(2026-06-25): `IncomeStatementView`/`BalanceSheetView`가
   `companyData`(검색으로 받은 종목분석.py 출력)를 `data` prop으로 받아 `annual_financials`의
   가장 최근 연도 값으로 계산함(`lastAnnual()`). 손익계산서는 매출액·영업이익·영업이익률(영업이익

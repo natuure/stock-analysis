@@ -44,6 +44,26 @@ module.exports = async (req, res) => {
       return res.json({ error: 'no_report', message: '최근 3년 내 제출된 사업보고서/분기보고서를 찾지 못했습니다.' });
     }
 
+    // 이미 이 보고서까지 분석돼 있으면(주도주분석.py 일괄 실행 등으로) DART 재무제표를 다시
+    // 받지 않고 저장된 데이터를 그대로 쓴다 — 현재가만 새로 받아 덮어씀. 검색 즉시 결과가
+    // 보이길 기대하는데 클라이언트의 분석 종목 목록이 새로고침 전이라 이 즉석분석 경로를
+    // 타게 되는 경우에도, 여기서 다시 한 번 "이미 최신인지" 확인해 불필요한 재분석을 막는다
+    // (2026-06-28, 사용자 제보 — 사전에 주도주분석.py를 돌려놔도 검색이 즉시 안 보였음).
+    const existing = await db.collection('company_analysis').findOne({ _id: corp.stock_code });
+    const upToDate = existing && existing.latest_report
+      && existing.latest_report.year === latest.year
+      && existing.latest_report.reprt_code === latest.reprtCode;
+
+    if (upToDate) {
+      let quote = existing.quote;
+      try {
+        quote = await fetchLiveQuote(db, corp.stock_code);
+      } catch (e) {
+        console.error('[analyzeCompany] KIS 현재가 조회 실패, 저장된 quote로 폴백:', e.message);
+      }
+      return res.json({ data: { ...existing, quote } });
+    }
+
     const plan = buildFetchPlan(latest.year, latest.reprtCode);
     const annual = await fetchAnnualFinancials(corp.corp_code, plan.annualYears);
     const quarters = plan.quarterSpecs.length ? await fetchQuarters(corp.corp_code, plan.quarterSpecs) : [];

@@ -134,7 +134,7 @@ Python (로컬 실행, 고정 IP)
 | `/api/analyzeStocks` | POST | Claude API 프록시 (현재 미사용) |
 | `/api/candles` | GET | `?symbol=&date=` → KIS Open API로 일봉 캔들 85개 실시간 조회. 실패 시에만 MongoDB `candles`(토스 캐시) 폴백 |
 | `/api/getCompanyOverview` | GET | code 없음: company_analysis 전체 목록(`name`+`stock_code`, 검색 자동완성용) / `?code=종목코드`: 단건 조회 + KIS Open API로 현재가를 실시간 재조회해 `quote` 덮어씀(실패 시에만 저장된 `quote` 폴백) |
-| `/api/analyzeCompany` | GET | `?name=종목명` → DART에서 corp_code를 못 찾으면 `{error:'not_found'}`, 최근 보고서가 없으면 `{error:'no_report'}`, 그 외엔 DART 재무제표+KIS 현재가를 즉석 조회해 `company_analysis`에 저장하고 `{data:...}` 반환(2026-06-27, Claude 미사용) |
+| `/api/analyzeCompany` | GET | `?name=종목명` → DART에서 corp_code를 못 찾으면 `{error:'not_found'}`, 최근 보고서가 없으면 `{error:'no_report'}`. **이미 `company_analysis`에 그 보고서까지 분석돼 있으면 DART 재무제표를 다시 받지 않고 저장된 데이터 그대로(현재가만 새로 받아) 즉시 반환**(2026-06-28 추가 — 주도주분석.py로 미리 분석해놔도 검색이 바로 안 보이던 문제 수정). 그 외엔 DART 재무제표+KIS 현재가를 즉석 조회해 `company_analysis`에 저장하고 `{data:...}` 반환(2026-06-27, Claude 미사용) |
 
 ---
 

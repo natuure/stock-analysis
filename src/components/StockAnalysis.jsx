@@ -199,41 +199,50 @@ export default function StockAnalysis({ target }) {
   function runSearch(name) {
     if (!name) return;
     if (status === 'loading' || status === 'analyzing') return; // 중복 제출 가드
+    setStatus('loading');
 
-    const match = companyList.find(c => c.name === name) || companyList.find(c => c.name.includes(name));
-    if (match) {
-      setStatus('loading');
-      fetch(`/api/getCompanyOverview?code=${match.stock_code}`)
-        .then(r => r.json())
-        .then(({ data }) => {
-          setCompanyData(data || null);
-          setStatus(data ? 'idle' : 'notfound');
-        })
-        .catch(() => setStatus('error'));
-      return;
-    }
-
-    // 로컬 목록(이미 분석된 종목)에 없으면 서버가 DART+KIS로 직접 즉석 분석한다
-    // (Claude 미사용, 2026-06-27 — 더 이상 종목분석.py를 먼저 실행할 필요 없음).
-    setStatus('analyzing');
-    fetch(`/api/analyzeCompany?name=${encodeURIComponent(name)}`)
+    // 분석된 종목 목록을 검색 시점에 다시 받아온다 — 마운트 시 한 번만 받아두면, 그 이후
+    // 서버에 새로 추가된 종목(주도주분석.py 일괄 실행 등)을 모르고 있다가 이미 분석돼
+    // 있는데도 즉석분석(느린 경로)을 타 버리는 문제가 있었음(2026-06-28, 사용자 제보 —
+    // "주도주분석.py 미리 돌려놔도 검색이 바로 안 보임"). 즉석분석 경로(analyzeCompany)도
+    // 이미 최신이면 재분석 없이 즉시 반환하도록 돼 있어 이중 안전망 역할.
+    fetch('/api/getCompanyOverview')
       .then(r => r.json())
-      .then(({ data, error }) => {
-        if (data) {
-          setCompanyData(data);
-          // 같은 종목을 다시 검색하면 이 목록에서 매칭돼 기존 getCompanyOverview 경로
-          // (실시간 KIS 재조회 포함)를 타게 됨 — 재분석 없이 캐시처럼 동작.
-          setCompanyList(list => list.some(c => c.stock_code === data.stock_code)
-            ? list
-            : [...list, { name: data.name, stock_code: data.stock_code }]);
-          setStatus('idle');
-        } else if (error === 'not_found') {
-          setStatus('notfound');
-        } else if (error === 'no_report') {
-          setStatus('no_report');
-        } else {
-          setStatus('error');
+      .then(({ list }) => {
+        const freshList = list || [];
+        setCompanyList(freshList);
+        const match = freshList.find(c => c.name === name) || freshList.find(c => c.name.includes(name));
+        if (match) {
+          return fetch(`/api/getCompanyOverview?code=${match.stock_code}`)
+            .then(r => r.json())
+            .then(({ data }) => {
+              setCompanyData(data || null);
+              setStatus(data ? 'idle' : 'notfound');
+            });
         }
+
+        // 목록에 없으면 서버가 DART+KIS로 직접 즉석 분석한다(Claude 미사용, 2026-06-27 —
+        // 더 이상 종목분석.py를 먼저 실행할 필요 없음).
+        setStatus('analyzing');
+        return fetch(`/api/analyzeCompany?name=${encodeURIComponent(name)}`)
+          .then(r => r.json())
+          .then(({ data, error }) => {
+            if (data) {
+              setCompanyData(data);
+              // 같은 종목을 다시 검색하면 이 목록에서 매칭돼 기존 getCompanyOverview 경로
+              // (실시간 KIS 재조회 포함)를 타게 됨 — 재분석 없이 캐시처럼 동작.
+              setCompanyList(list => list.some(c => c.stock_code === data.stock_code)
+                ? list
+                : [...list, { name: data.name, stock_code: data.stock_code }]);
+              setStatus('idle');
+            } else if (error === 'not_found') {
+              setStatus('notfound');
+            } else if (error === 'no_report') {
+              setStatus('no_report');
+            } else {
+              setStatus('error');
+            }
+          });
       })
       .catch(() => setStatus('error'));
   }
