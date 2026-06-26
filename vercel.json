@@ -5,9 +5,10 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "functions": {
-    "api/analyzeStocks.js": { "maxDuration": 60 },
-    "api/getAnalysis.js":   { "maxDuration": 10 },
-    "api/getData.js":       { "maxDuration": 10 },
-    "api/candles.js":       { "maxDuration": 10 }
+    "api/analyzeStocks.js":   { "maxDuration": 60 },
+    "api/getAnalysis.js":     { "maxDuration": 10 },
+    "api/getData.js":         { "maxDuration": 10 },
+    "api/candles.js":         { "maxDuration": 10 },
+    "api/analyzeCompany.js":  { "maxDuration": 90 }
   }
 }

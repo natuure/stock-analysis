@@ -177,7 +177,7 @@ export default function StockAnalysis() {
   const [query, setQuery] = useState('');
   const [companyList, setCompanyList] = useState([]);
   const [companyData, setCompanyData] = useState(null);
-  const [status, setStatus] = useState('idle'); // idle | loading | notfound | error
+  const [status, setStatus] = useState('idle'); // idle | loading | analyzing | notfound | no_report | error
 
   useEffect(() => {
     fetch('/api/getCompanyOverview')
@@ -190,18 +190,42 @@ export default function StockAnalysis() {
     e.preventDefault();
     const name = query.trim();
     if (!name) return;
+    if (status === 'loading' || status === 'analyzing') return; // 중복 제출 가드
+
     const match = companyList.find(c => c.name === name) || companyList.find(c => c.name.includes(name));
-    if (!match) {
-      setStatus('notfound');
-      setCompanyData(null);
+    if (match) {
+      setStatus('loading');
+      fetch(`/api/getCompanyOverview?code=${match.stock_code}`)
+        .then(r => r.json())
+        .then(({ data }) => {
+          setCompanyData(data || null);
+          setStatus(data ? 'idle' : 'notfound');
+        })
+        .catch(() => setStatus('error'));
       return;
     }
-    setStatus('loading');
-    fetch(`/api/getCompanyOverview?code=${match.stock_code}`)
+
+    // 로컬 목록(이미 분석된 종목)에 없으면 서버가 DART+KIS로 직접 즉석 분석한다
+    // (Claude 미사용, 2026-06-27 — 더 이상 종목분석.py를 먼저 실행할 필요 없음).
+    setStatus('analyzing');
+    fetch(`/api/analyzeCompany?name=${encodeURIComponent(name)}`)
       .then(r => r.json())
-      .then(({ data }) => {
-        setCompanyData(data || null);
-        setStatus(data ? 'idle' : 'notfound');
+      .then(({ data, error }) => {
+        if (data) {
+          setCompanyData(data);
+          // 같은 종목을 다시 검색하면 이 목록에서 매칭돼 기존 getCompanyOverview 경로
+          // (실시간 KIS 재조회 포함)를 타게 됨 — 재분석 없이 캐시처럼 동작.
+          setCompanyList(list => list.some(c => c.stock_code === data.stock_code)
+            ? list
+            : [...list, { name: data.name, stock_code: data.stock_code }]);
+          setStatus('idle');
+        } else if (error === 'not_found') {
+          setStatus('notfound');
+        } else if (error === 'no_report') {
+          setStatus('no_report');
+        } else {
+          setStatus('error');
+        }
       })
       .catch(() => setStatus('error'));
   }
@@ -224,9 +248,19 @@ export default function StockAnalysis() {
       {status === 'loading' && (
         <div className="stock-search-msg">조회 중...</div>
       )}
+      {status === 'analyzing' && (
+        <div className="stock-search-msg">
+          분석 중입니다... DART·KIS에서 직접 조회하므로 최대 1~2분 정도 걸릴 수 있어요.
+        </div>
+      )}
       {status === 'notfound' && (
         <div className="stock-search-msg">
-          분석된 종목이 아닙니다. 먼저 <code>python 종목분석.py 종목명</code>을 실행하세요.
+          DART 상장사 목록에서 종목을 찾지 못했습니다. 정식 회사명을 확인해 주세요.
+        </div>
+      )}
+      {status === 'no_report' && (
+        <div className="stock-search-msg">
+          재무제표 공시가 없는 종목입니다(최근 상장 등). 분석할 수 없습니다.
         </div>
       )}
       {status === 'error' && (

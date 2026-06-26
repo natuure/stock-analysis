@@ -19,16 +19,26 @@ src/                                 api/getData.js                  MongoDB Atl
                                          (목록/종목코드별 단건) +        company_analysis 컬렉션
                                          KIS로 현재가 실시간 덮어씀         _id = "종목코드"
                                          (실패 시에만 저장된 quote 폴백)
+                                     api/analyzeCompany.js            dart_corp_codes 컬렉션
+                                       DART+KIS 즉석 분석                _id = "map"
+                                       (Claude 미사용) → company_analysis
+                                       저장(없던 종목이면 신규)
                                        api/_kis.js (candles.js·
-                                         getCompanyOverview.js 공용
-                                         KIS 토큰 발급·캐싱, 라우트 아님)
+                                         getCompanyOverview.js·
+                                         analyzeCompany.js 공용
+                                         KIS 토큰·현재가, 라우트 아님)
+                                       api/_dart.js (analyzeCompany.js
+                                         전용, DART 추출·corp_code
+                                         조회, 라우트 아님)
 
 Python (로컬 실행, 고정 IP)
   뉴스분석.py   ← FinanceDataReader 수집 + 토스 캔들 캐싱(폴백용) + Naver 뉴스 수집 + stock_data 저장
   저장분석.py   ← ai_analysis 저장
   주간분석.py   ← 코스피/코스닥 주간 변동률 계산 + weekly_indices 저장 (메인 흐름과 독립)
   종목분석.py   ← DART로 단일 종목 재무제표 수집 + MongoDB company_analysis 저장
-                  (웹앱 "종목 분석" 탭 검색용, DATA_PIPELINE.md 참고)
+                  (웹앱 "종목 분석" 탭 검색용, DATA_PIPELINE.md 참고 — 2026-06-27부터는
+                  수동 실행 없이도 웹에서 미분석 종목을 즉석 분석 가능, api/analyzeCompany.js)
+  기업코드동기화.py ← 로컬 _dart_corp_codes.json → MongoDB dart_corp_codes 매핑(1회성/재사용)
 ```
 
 - **GitHub 저장소**: https://github.com/natuure/stock-analysis.git
@@ -50,8 +60,13 @@ Python (로컬 실행, 고정 IP)
 │   ├── candles.js              # GET ?symbol=&date= → KIS Open API 직접 호출(실시간), 실패 시 candles 캐시 폴백
 │   ├── getCompanyOverview.js   # GET (code 없음) → 분석된 종목 목록 / GET ?code= → company_analysis 조회 +
 │   │                             KIS로 현재가 실시간 덮어씀(실패 시에만 저장된 quote 폴백)
+│   ├── analyzeCompany.js       # GET ?name=종목명 → 미분석 종목을 DART+KIS로 즉석 분석해 company_analysis에
+│   │                             저장 후 반환(2026-06-27, Claude 미사용 — 종목분석.py의 JS 포팅)
 │   ├── getThemeTrend.js        # GET ?days=(기본 14) → ai_analysis에서 최근 N일 테마 배열만 프로젝션해 반환
-│   └── _kis.js                 # KIS 접근토큰 발급·캐싱 공용 모듈(라우트 아님, candles.js·getCompanyOverview.js가 import)
+│   ├── _kis.js                 # KIS 접근토큰 발급·캐싱 + fetchLiveQuote(현재가 조회) 공용 모듈(라우트 아님,
+│   │                             candles.js·getCompanyOverview.js·analyzeCompany.js가 import)
+│   └── _dart.js                # DART 재무제표 추출·corp_code 조회 공용 모듈(라우트 아님, analyzeCompany.js가
+│                                  import, 종목분석.py 핵심 로직의 1:1 JS 포팅, 2026-06-27)
 ├── src/
 │   ├── main.jsx
 │   ├── App.jsx              # 상태 관리 (Tables에 dateISO 전달 — 차트 패널은 각 표 내부에서 자체 관리)
@@ -71,6 +86,8 @@ Python (로컬 실행, 고정 IP)
 ├── 저장분석.py              # ai_analysis MongoDB 저장
 ├── 주간분석.py              # 코스피/코스닥 주간 변동률 → weekly_indices 저장
 ├── 종목분석.py              # DART로 단일 종목 재무제표 수집 → 종목분석결과/*.json (gitignore) + MongoDB company_analysis 저장
+├── 기업코드동기화.py        # 로컬 _dart_corp_codes.json → MongoDB dart_corp_codes 1회성/재사용 마이그레이션
+│                             (api/analyzeCompany.js가 Vercel에서 읽는 corp_code 매핑, 2026-06-27)
 ├── requirements.txt         # pandas, finance-datareader, requests, pymongo[srv], python-dotenv
 ├── AI검색.md                # Naver API 쿼리 패턴 가이드
 ├── 데일리분석/              # (과거 HTS 엑셀 보관 폴더, 더 이상 스크립트가 사용하지 않음, gitignore 유지)
@@ -94,7 +111,8 @@ Python (로컬 실행, 고정 IP)
 | `candles` | 종목별 토스 일봉 캔들 캐시 (KIS 실패 시 폴백용) | `{ _id: "종목코드_YYYY-MM-DD", candles: [...] }` (해당일 거래대금/등락률 상위 종목만) |
 | `kis_token` | KIS 접근토큰 캐시 (1분당 1회 발급 제한 대응) | `{ _id: "token", accessToken, expiresAt }` 단일 문서 |
 | `weekly_indices` | 주간 코스피/코스닥 변동률 (주간분석.py가 채움) | `{ _id: "YYYY-W##", kospi: {...}, kosdaq: {...} }` |
-| `company_analysis` | 종목별 DART 재무제표 + KIS 현재가 (종목분석.py가 채움, "종목 분석" 탭용). **`quote`는 스크립트 실행 시점에 박힌 값이라 폴백 전용** — 실제 화면에는 `api/getCompanyOverview.js`가 조회 시점에 KIS로 새로 받아온 현재가가 표시됨(2026-06-25) | `{ _id: "종목코드", name, date, corp_code, quote, annual_financials, quarterly_financials, latest_report }` |
+| `company_analysis` | 종목별 DART 재무제표 + KIS 현재가 (종목분석.py 수동 실행 **또는** `api/analyzeCompany.js` 즉석분석이 채움, "종목 분석" 탭용). **`quote`는 채워진 시점에 박힌 값이라 폴백 전용** — 실제 화면에는 `api/getCompanyOverview.js`가 조회 시점에 KIS로 새로 받아온 현재가가 표시됨(2026-06-25) | `{ _id: "종목코드", name, date, corp_code, quote, annual_financials, quarterly_financials, latest_report }` |
+| `dart_corp_codes` | DART 상장기업 corp_code 매핑(`기업코드동기화.py`가 로컬 `_dart_corp_codes.json`을 1회 옮김, `api/analyzeCompany.js`가 종목명→corp_code 조회에 사용 — Vercel엔 영속 파일시스템이 없어 로컬 JSON 캐싱 패턴을 못 씀, 2026-06-27) | `{ _id: "map", data: { "회사명": { corp_code, stock_code }, ... } }` 단일 문서 |
 
 > ⚠️ `wics_cache` 컬렉션은 삭제됨 (WICS 업종 분류 기능 제거)
 
@@ -110,6 +128,7 @@ Python (로컬 실행, 고정 IP)
 | `/api/analyzeStocks` | POST | Claude API 프록시 (현재 미사용) |
 | `/api/candles` | GET | `?symbol=&date=` → KIS Open API로 일봉 캔들 85개 실시간 조회. 실패 시에만 MongoDB `candles`(토스 캐시) 폴백 |
 | `/api/getCompanyOverview` | GET | code 없음: company_analysis 전체 목록(`name`+`stock_code`, 검색 자동완성용) / `?code=종목코드`: 단건 조회 + KIS Open API로 현재가를 실시간 재조회해 `quote` 덮어씀(실패 시에만 저장된 `quote` 폴백) |
+| `/api/analyzeCompany` | GET | `?name=종목명` → DART에서 corp_code를 못 찾으면 `{error:'not_found'}`, 최근 보고서가 없으면 `{error:'no_report'}`, 그 외엔 DART 재무제표+KIS 현재가를 즉석 조회해 `company_analysis`에 저장하고 `{data:...}` 반환(2026-06-27, Claude 미사용) |
 
 ---
 
@@ -125,4 +144,4 @@ Python (로컬 실행, 고정 IP)
 | `TOSS_CLIENT_SECRET` | .env.local | 토스증권 Open API OAuth2 (뉴스분석.py, IP 허용 목록 때문에 로컬에서만 사용) |
 | `KIS_APP_KEY` | .env.local + Vercel | KIS(한국투자증권) Open API 인증 (api/candles.js·api/getCompanyOverview.js·뉴스분석.py·종목분석.py, IP 제한 없어 Vercel에서 직접 호출) |
 | `KIS_APP_SECRET` | .env.local + Vercel | KIS(한국투자증권) Open API 인증 (api/candles.js·api/getCompanyOverview.js·뉴스분석.py·종목분석.py, IP 제한 없어 Vercel에서 직접 호출) |
-| `DART_API_KEY` | .env.local | DART Open API 인증 (종목분석.py 전용, 웹앱/Vercel과 무관) |
+| `DART_API_KEY` | .env.local + Vercel | DART Open API 인증 (종목분석.py + `api/_dart.js`/`api/analyzeCompany.js`, IP 제한 없어 Vercel에서 직접 호출 — 2026-06-27부터 웹앱도 사용, 그 전엔 종목분석.py 전용이었음) |

@@ -62,6 +62,21 @@ python 종목분석.py 종목명
   (`CompanyOverviewView.jsx`). 실행이 끝나면 결과를 MongoDB `company_analysis` 컬렉션에도
   `_id=종목코드`로 upsert 저장하므로(2026-06-25), 수동 복사 없이 웹앱 검색창에 종목명을
   입력(자동완성 지원)하면 `/api/getCompanyOverview`가 바로 그 문서를 읽어 표시한다.
+- **2026-06-27부터 이 스크립트를 수동 실행하지 않아도 됨**: 이 절 전체(corp_code 매핑,
+  `find_latest_report`/`build_fetch_plan`, 계정명 후보 목록과 `extract_account`/`extract_eps`/
+  `extract_account_like` 매칭 로직)가 `api/_dart.js`로 1:1 포팅돼 `api/analyzeCompany.js`
+  (`GET ?name=종목명`)가 그대로 재사용한다 — 웹앱에서 아직 분석 안 한 종목을 검색하면
+  서버가 즉석으로 DART+KIS를 호출해 분석하고 `company_analysis`에 저장한 뒤 곧바로 보여줌
+  (Claude/LLM 미사용 — 전부 결정적 API 호출+산술 계산, `StockAnalysis.jsx`의 `analyzing`
+  상태 참고). 이 스크립트 자체는 폐기되지 않음(수동 일괄 재분석·디버깅·로컬 JSON/`.docx`
+  리포트 작성용으로 계속 유효) — 단지 "검색 전 필수 선행 작업"이라는 위치만 없어진 것.
+  **corp_code 매핑은 Vercel엔 영속 파일시스템이 없어 로컬 `_dart_corp_codes.json` 캐싱
+  패턴을 그대로 못 씀** — 대신 `기업코드동기화.py`가 그 파일을 MongoDB `dart_corp_codes`
+  컬렉션(`{_id:'map', data:{...}}`)에 1회 옮겨두고, `api/_dart.js`는 항상 그 컬렉션만
+  읽는다(corpCode.xml의 ZIP/XML 파싱을 JS로 새로 만들지 않음). 신규 상장사가 이 매핑에
+  없을 수 있는 한계는 기존 스크립트의 "최초 1회 캐싱, 이후 자동 갱신 안 함" 정책과 동일 —
+  필요하면 `_dart_corp_codes.json`을 갱신한 뒤 `기업코드동기화.py`를 재실행(재배포해야 Vercel
+  warm 인스턴스에도 즉시 반영됨).
 - DART Open API(`opendart.fss.or.kr`)를 **직접** 호출 — `.env.local`의 `DART_API_KEY` 필요
   (무료 발급, [opendart.fss.or.kr](https://opendart.fss.or.kr)). 대화 중에만 쓸 수 있는
   `dart-mcp` MCP 도구와는 별개이며, 그 도구가 내부적으로 감싸고 있는 것과 같은 공식 API를
