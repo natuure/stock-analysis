@@ -39,6 +39,9 @@ Python (로컬 실행, 고정 IP)
                   (웹앱 "종목 분석" 탭 검색용, DATA_PIPELINE.md 참고 — 2026-06-27부터는
                   수동 실행 없이도 웹에서 미분석 종목을 즉석 분석 가능, api/analyzeCompany.js)
   기업코드동기화.py ← 로컬 _dart_corp_codes.json → MongoDB dart_corp_codes 매핑(1회성/재사용)
+  주도주분석.py ← 뉴스분석.py 다음 실행, 그날 거래대금·등락률 상위 종목(최대 100개)을
+                  종목분석.py의 analyze_one()으로 일괄 분석(이미 DART 최신 보고서까지
+                  반영돼 있으면 스킵, 2026-06-27)
 ```
 
 - **GitHub 저장소**: https://github.com/natuure/stock-analysis.git
@@ -86,6 +89,9 @@ Python (로컬 실행, 고정 IP)
 ├── 저장분석.py              # ai_analysis MongoDB 저장
 ├── 주간분석.py              # 코스피/코스닥 주간 변동률 → weekly_indices 저장
 ├── 종목분석.py              # DART로 단일 종목 재무제표 수집 → 종목분석결과/*.json (gitignore) + MongoDB company_analysis 저장
+│                             (analyze_one()은 주도주분석.py가 일괄 호출용으로 재사용, 2026-06-27)
+├── 주도주분석.py            # 그날 거래대금·등락률 상위 종목(최대 100개, 중복 제거)을 종목분석.py로
+│                             일괄 분석 — DART 최신 보고서까지 반영돼 있으면 스킵(2026-06-27)
 ├── 기업코드동기화.py        # 로컬 _dart_corp_codes.json → MongoDB dart_corp_codes 1회성/재사용 마이그레이션
 │                             (api/analyzeCompany.js가 Vercel에서 읽는 corp_code 매핑, 2026-06-27)
 ├── requirements.txt         # pandas, finance-datareader, requests, pymongo[srv], python-dotenv
@@ -111,7 +117,7 @@ Python (로컬 실행, 고정 IP)
 | `candles` | 종목별 토스 일봉 캔들 캐시 (KIS 실패 시 폴백용) | `{ _id: "종목코드_YYYY-MM-DD", candles: [...] }` (해당일 거래대금/등락률 상위 종목만) |
 | `kis_token` | KIS 접근토큰 캐시 (1분당 1회 발급 제한 대응) | `{ _id: "token", accessToken, expiresAt }` 단일 문서 |
 | `weekly_indices` | 주간 코스피/코스닥 변동률 (주간분석.py가 채움) | `{ _id: "YYYY-W##", kospi: {...}, kosdaq: {...} }` |
-| `company_analysis` | 종목별 DART 재무제표 + KIS 현재가 (종목분석.py 수동 실행 **또는** `api/analyzeCompany.js` 즉석분석이 채움, "종목 분석" 탭용). **`quote`는 채워진 시점에 박힌 값이라 폴백 전용** — 실제 화면에는 `api/getCompanyOverview.js`가 조회 시점에 KIS로 새로 받아온 현재가가 표시됨(2026-06-25) | `{ _id: "종목코드", name, date, corp_code, quote, annual_financials, quarterly_financials, latest_report }` |
+| `company_analysis` | 종목별 DART 재무제표 + KIS 현재가 (종목분석.py 수동 실행, `주도주분석.py` 일괄 실행, **또는** `api/analyzeCompany.js` 즉석분석이 채움, "종목 분석" 탭용). **`quote`는 채워진 시점에 박힌 값이라 폴백 전용** — 실제 화면에는 `api/getCompanyOverview.js`가 조회 시점에 KIS로 새로 받아온 현재가가 표시됨(2026-06-25) | `{ _id: "종목코드", name, date, corp_code, quote, annual_financials, quarterly_financials, latest_report }` |
 | `dart_corp_codes` | DART 상장기업 corp_code 매핑(`기업코드동기화.py`가 로컬 `_dart_corp_codes.json`을 1회 옮김, `api/analyzeCompany.js`가 종목명→corp_code 조회에 사용 — Vercel엔 영속 파일시스템이 없어 로컬 JSON 캐싱 패턴을 못 씀, 2026-06-27) | `{ _id: "map", data: { "회사명": { corp_code, stock_code }, ... } }` 단일 문서 |
 
 > ⚠️ `wics_cache` 컬렉션은 삭제됨 (WICS 업종 분류 기능 제거)

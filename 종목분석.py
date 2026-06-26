@@ -375,32 +375,13 @@ def fetch_quarters(corp_code, specs):
 
 # ── 메인 ─────────────────────────────────────────────────────────────────────
 
-def main():
-    if len(sys.argv) < 2:
-        print('사용법: python 종목분석.py 종목명')
-        print('예시: python 종목분석.py 인지컨트롤스')
-        return
-    if not DART_API_KEY:
-        print('[오류] DART_API_KEY가 .env.local에 없습니다. https://opendart.fss.or.kr 에서 발급 후 추가하세요.')
-        return
-
-    name = sys.argv[1].strip()
+def analyze_one(name, corp, latest_year, latest_code, latest_label, kis_token=None):
+    """corp_code/최신보고서를 이미 안 상태에서 재무제표 수집~저장까지 수행한다(주도주분석.py가
+    여러 종목을 일괄 처리할 때 재사용 — corp_code 조회/find_latest_report는 호출 쪽에서 이미
+    끝낸 뒤 넘겨주므로 여기서 다시 하지 않음). kis_token을 넘기면 그 토큰을 재사용하고(여러
+    종목 처리 시 KIS 토큰 발급이 1분당 1회로 제한돼 있어 매번 새로 받으면 거의 다 실패함),
+    안 넘기면 기존처럼 새로 발급한다(단독 실행 시 동작 그대로 유지)."""
     today = datetime.now()
-    print(f'종목분석 시작: {name}')
-
-    corp_map = load_corp_codes()
-    corp = find_corp_code(name, corp_map)
-    if not corp:
-        print(f"[오류] DART 상장사 목록에서 '{name}'을 찾지 못했습니다. 정식 회사명을 확인하세요.")
-        return
-    print(f"corp_code={corp['corp_code']} stock_code={corp['stock_code']}")
-
-    print('최근 제출 보고서 확인 중...')
-    latest_year, latest_code, latest_label = find_latest_report(corp['corp_code'], today)
-    if latest_year is None:
-        print('[오류] 최근 3년 내 제출된 사업보고서/분기보고서를 찾지 못했습니다.')
-        return
-    print(f'  → 최신 보고서: {latest_year}년 {latest_label}')
 
     annual_years, quarter_specs = build_fetch_plan(latest_year, latest_code)
     print(f"연간 재무제표 조회 중... ({', '.join(str(y) for y in annual_years)}년 사업보고서)")
@@ -418,8 +399,8 @@ def main():
     else:
         print('현재가·시가총액·발행주식수 조회 중 (KIS)...')
         try:
-            kis_token = get_kis_token()
-            quote = fetch_kis_quote(kis_token, corp['stock_code'])
+            token = kis_token or get_kis_token()
+            quote = fetch_kis_quote(token, corp['stock_code'])
         except Exception as e:
             print(f'[경고] KIS 현재가 조회 실패, quote 없이 진행: {e}')
 
@@ -450,6 +431,38 @@ def main():
         client.close()
         print(f"MongoDB 저장 완료: company_analysis/{corp['stock_code']} ({name})")
         print('웹앱 "종목 분석" 탭에서 종목명을 검색하면 표시됩니다.')
+
+    return result
+
+
+def main():
+    if len(sys.argv) < 2:
+        print('사용법: python 종목분석.py 종목명')
+        print('예시: python 종목분석.py 인지컨트롤스')
+        return
+    if not DART_API_KEY:
+        print('[오류] DART_API_KEY가 .env.local에 없습니다. https://opendart.fss.or.kr 에서 발급 후 추가하세요.')
+        return
+
+    name = sys.argv[1].strip()
+    today = datetime.now()
+    print(f'종목분석 시작: {name}')
+
+    corp_map = load_corp_codes()
+    corp = find_corp_code(name, corp_map)
+    if not corp:
+        print(f"[오류] DART 상장사 목록에서 '{name}'을 찾지 못했습니다. 정식 회사명을 확인하세요.")
+        return
+    print(f"corp_code={corp['corp_code']} stock_code={corp['stock_code']}")
+
+    print('최근 제출 보고서 확인 중...')
+    latest_year, latest_code, latest_label = find_latest_report(corp['corp_code'], today)
+    if latest_year is None:
+        print('[오류] 최근 3년 내 제출된 사업보고서/분기보고서를 찾지 못했습니다.')
+        return
+    print(f'  → 최신 보고서: {latest_year}년 {latest_label}')
+
+    analyze_one(name, corp, latest_year, latest_code, latest_label)
 
 
 if __name__ == '__main__':
