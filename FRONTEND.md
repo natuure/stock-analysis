@@ -55,7 +55,9 @@
   MongoDB `company_analysis`에 저장된 종목만** 대상이라는 점에 주의.
 
 ### CompanyOverviewView.jsx (2026-06-25 도입, "기업개요" 버튼)
-- PER(후행/선행)·PBR·ROE·EV/EBITDA 5개 지표를 `.fin-card`로 표시 후, "적정주가" 섹션에 PER법·
+- 시가총액(`price × sharesOutstanding`, **PER(후행) 바로 위에 2026-06-27 추가**, 사용자
+  요청 — `fmtEok()`로 억원 단위 표시)·PER(후행/선행)·PBR·ROE·EV/EBITDA 6개 지표를
+  `.fin-card`로 표시 후, "적정주가" 섹션에 PER법·
   PBR법·EV/EBITDA법·DCF법 4개 카드(`.val-grid`, 데스크톱 2열 → 767px 이하 1열)를 보여줌. 각
   카드는 가로 슬라이더(`<input type=range>`, `.val-slider-input`)로 목표 PER/PBR/EV·EBITDA
   배수 또는 WACC 할인율을 조절하면 적정주가가 실시간 재계산됨(React state, 헤드리스 브라우저로

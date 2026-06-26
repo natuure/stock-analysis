@@ -147,7 +147,10 @@ function DcfMethodCard({ netIncomeAnnualized, sharesOutstanding, currentPrice })
   );
 }
 
+function fmtEok(n) { return n == null ? '-' : `${fmtN(n / 1e8)}억원`; }
+
 const OVERVIEW_ROWS = [
+  { key: 'marketCap',   label: '시가총액',   fmt: fmtEok },
   { key: 'perTrailing', label: 'PER(후행)', fmt: v => `${v.toFixed(2)}배` },
   { key: 'perForward',  label: 'PER(선행)', fmt: v => `${v.toFixed(2)}배` },
   { key: 'pbr',         label: 'PBR',       fmt: v => `${v.toFixed(2)}배` },
