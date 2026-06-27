@@ -17,13 +17,29 @@ export function TrendChart({ periods, metrics, type, title, showValues, valueFor
   const plotW = W - PAD_L - PAD_R;
   const plotH = H - PAD_T - PAD_B;
   const n = periods.length;
-  const values = metrics.flatMap(m => periods.map(p => p[m.key])).filter(v => v != null && isFinite(v));
-  if (n === 0 || values.length === 0) return null;
-  const max = Math.max(0, ...values);
-  const min = Math.min(0, ...values);
-  const range = (max - min) || 1;
-  const y = (v) => PAD_T + plotH * (1 - (v - min) / range);
-  const zeroY = y(0);
+  const anyValues = metrics.flatMap(m => periods.map(p => p[m.key])).filter(v => v != null && isFinite(v));
+  if (n === 0 || anyValues.length === 0) return null;
+
+  // metrics[i].axis === 'right'이면 보조(우측) y축 스케일을 따로 써서 서로 단위가 다른
+  // 지표(예: ROE % vs 주당순이익 원)를 한 차트에 같이 그려도 한쪽이 0 근처에 눌려붙지 않게
+  // 한다(2026-06-28 추가). axis 지정이 없으면 기존과 동일하게 전부 좌측(기본) 축 하나만 씀.
+  function rangeOf(ms) {
+    const vals = ms.flatMap(m => periods.map(p => p[m.key])).filter(v => v != null && isFinite(v));
+    if (vals.length === 0) return null;
+    const max = Math.max(0, ...vals);
+    const min = Math.min(0, ...vals);
+    return { min, max, range: (max - min) || 1 };
+  }
+  const leftMetrics  = metrics.filter(m => m.axis !== 'right');
+  const rightMetrics = metrics.filter(m => m.axis === 'right');
+  const leftRange  = rangeOf(leftMetrics);
+  const rightRange = rangeOf(rightMetrics);
+  const yFor = (m) => {
+    const r = (m.axis === 'right' ? rightRange : leftRange) || leftRange || rightRange;
+    return (v) => PAD_T + plotH * (1 - (v - r.min) / r.range);
+  };
+  const fmtFor = (m) => m.valueFormatter || valueFormatter;
+  const zeroY = yFor(leftMetrics[0] || rightMetrics[0])(0);
   const groupW = plotW / n;
   const cx = (i) => PAD_L + groupW * i + groupW / 2;
 
@@ -33,39 +49,46 @@ export function TrendChart({ periods, metrics, type, title, showValues, valueFor
       <svg className="trend-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ height: H }}>
         <line x1={PAD_L} x2={W - PAD_R} y1={zeroY} y2={zeroY} className="trend-axis" />
         {type === 'bar'
-          ? metrics.map((m, mi) => periods.map((p, i) => {
-              const v = p[m.key];
-              if (v == null) return null;
-              const barW = groupW / (metrics.length + 1);
-              const x = cx(i) - (metrics.length * barW) / 2 + mi * barW;
-              const yv = y(v);
-              const top = Math.min(yv, zeroY);
-              const h = Math.max(Math.abs(yv - zeroY), 0.5);
-              const bw = barW * 0.85;
-              return (
-                <g key={`${m.key}-${i}`}>
-                  <rect x={x} y={top} width={bw} height={h} fill={m.color} />
-                  {showValues && (
-                    <text x={x + bw / 2} y={top - 4} textAnchor="middle" className="trend-point-label" fill={m.color}>
-                      {valueFormatter(v)}
-                    </text>
-                  )}
-                </g>
-              );
-            }))
+          ? metrics.map((m, mi) => {
+              const yM = yFor(m);
+              const zeroYM = yM(0);
+              const fmt = fmtFor(m);
+              return periods.map((p, i) => {
+                const v = p[m.key];
+                if (v == null) return null;
+                const barW = groupW / (metrics.length + 1);
+                const x = cx(i) - (metrics.length * barW) / 2 + mi * barW;
+                const yv = yM(v);
+                const top = Math.min(yv, zeroYM);
+                const h = Math.max(Math.abs(yv - zeroYM), 0.5);
+                const bw = barW * 0.85;
+                return (
+                  <g key={`${m.key}-${i}`}>
+                    <rect x={x} y={top} width={bw} height={h} fill={m.color} />
+                    {showValues && (
+                      <text x={x + bw / 2} y={top - 4} textAnchor="middle" className="trend-point-label" fill={m.color}>
+                        {fmt(v)}
+                      </text>
+                    )}
+                  </g>
+                );
+              });
+            })
           : metrics.map(m => {
+              const yM = yFor(m);
+              const fmt = fmtFor(m);
               const pts = periods
-                .map((p, i) => (p[m.key] == null ? null : `${cx(i)},${y(p[m.key])}`))
+                .map((p, i) => (p[m.key] == null ? null : `${cx(i)},${yM(p[m.key])}`))
                 .filter(Boolean).join(' ');
               return pts && (
                 <g key={m.key}>
                   <polyline points={pts} fill="none" stroke={m.color} strokeWidth="2" />
                   {periods.map((p, i) => p[m.key] != null && (
                     <g key={i}>
-                      <circle cx={cx(i)} cy={y(p[m.key])} r="2.5" fill={m.color} />
+                      <circle cx={cx(i)} cy={yM(p[m.key])} r="2.5" fill={m.color} />
                       {showValues && (
-                        <text x={cx(i)} y={y(p[m.key]) - 6} textAnchor="middle" className="trend-point-label" fill={m.color}>
-                          {valueFormatter(p[m.key])}
+                        <text x={cx(i)} y={yM(p[m.key]) - 6} textAnchor="middle" className="trend-point-label" fill={m.color}>
+                          {fmt(p[m.key])}
                         </text>
                       )}
                     </g>
@@ -80,7 +103,9 @@ export function TrendChart({ periods, metrics, type, title, showValues, valueFor
       {metrics.length > 1 && (
         <div className="trend-legend">
           {metrics.map(m => (
-            <span className="trend-legend-item" key={m.key}><i style={{ background: m.color }} />{m.label}</span>
+            <span className="trend-legend-item" key={m.key}>
+              <i style={{ background: m.color }} />{m.label}{m.axis === 'right' ? ' (우축)' : ''}
+            </span>
           ))}
         </div>
       )}
