@@ -467,6 +467,25 @@ tbody tr.chart-row td { text-align: left; white-space: normal; padding: 0; }
 .trend-legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--c-muted); }
 .trend-legend-item i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 
+/* ── 거래대금·등락률 분석 — 거래대금 카테고리 TOP5 순위표 ──────────────── */
+.cat-trend-block {
+  background: var(--c-bg); border-radius: var(--r-md); box-shadow: var(--shadow-card);
+  padding: 16px 20px; margin-top: 16px;
+}
+.cat-trend-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.cat-trend-table { border-collapse: collapse; font-size: 12px; white-space: nowrap; }
+.cat-trend-table th, .cat-trend-table td { padding: 7px 10px; text-align: center; }
+.cat-trend-table thead th { font-size: 11px; color: var(--c-muted); font-weight: 700; }
+.cat-trend-table td { color: var(--c-heading); border-top: 1px solid var(--c-border); }
+/* 순위 라벨 열은 가로 스크롤해도 항상 보이게 고정 */
+.cat-trend-rank-col {
+  position: sticky; left: 0; background: var(--c-bg);
+  color: var(--c-muted); font-weight: 700;
+}
+.cat-trend-up   { color: var(--c-up); font-weight: 700; }   /* 전날보다 순위 상승 */
+.cat-trend-down { color: var(--c-down); font-weight: 700; } /* 전날보다 순위 하락 */
+.cat-trend-new  { background: rgba(3, 178, 108, 0.15); font-weight: 700; } /* --c-success 톤, TOP5 신규 진입 */
+
 /* ── 거래대금·등락률 분석 — 카테고리 비중 도넛 차트(스와이프 캐러셀) ───────── */
 .pie-carousel-block {
   background: var(--c-bg); border-radius: var(--r-md); box-shadow: var(--shadow-card);

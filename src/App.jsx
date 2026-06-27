@@ -48,9 +48,11 @@ export default function App() {
       })
       .catch(() => {});
 
-    // 최근 N일 테마 카테고리 추이 — 캘린더에서 어느 날짜를 골랐는지와 무관한 "현재 펄스"라
-    // 날짜 선택과 별개로 앱이 뜰 때 한 번만 가져온다.
-    fetch('/api/getThemeTrend')
+    // 최근 거래대금 카테고리 TOP5 추이 — 캘린더에서 어느 날짜를 골랐는지와 무관한 "현재
+    // 펄스"라 날짜 선택과 별개로 앱이 뜰 때 한 번만 가져온다. 종목별 카테고리가 없는
+    // 과거 날짜가 섞여 있어도 표시 가능한 날짜를 15개 넉넉히 확보하려고 30일 요청
+    // (2026-06-28, DATA_PIPELINE.md 참고).
+    fetch('/api/getThemeTrend?days=30')
       .then(r => r.json())
       .then(({ days }) => setThemeTrend(days || []))
       .catch(() => {});

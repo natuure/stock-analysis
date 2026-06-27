@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef } from 'react';
-import { TrendChart, TREND_PALETTE } from './TrendChart';
+import { TREND_PALETTE } from './TrendChart';
 import { PieChart } from './PieChart';
 
 const MAX_THEMES = 6;
@@ -34,46 +34,90 @@ function ThemeTable({ themes }) {
   );
 }
 
-// themeTrend(api/getThemeTrend.js 응답의 days 배열, 최신순)를 카테고리별 일별 등장 횟수로
-// 집계해 TrendChart의 periods/metrics 모양으로 바꾼다. 카테고리가 없는 항목(과거 미백필분)은
-// 조용히 무시 — "기타"로 임의 분류하지 않는다(데이터 왜곡 방지).
-function aggregateThemeTrend(days) {
-  const chrono = [...days].reverse(); // 시간순(과거→최근)으로 뒤집어서 차트 왼→오 방향에 맞춤
-
-  const totals = {};
-  chrono.forEach(d => (d.테마 || []).forEach(t => {
-    if (t.카테고리) totals[t.카테고리] = (totals[t.카테고리] || 0) + 1;
-  }));
-
-  const topCategories = Object.entries(totals)
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])) // 동률이면 항상 같은 순서(결정적)
-    .slice(0, 6)
-    .map(([cat]) => cat);
-  if (topCategories.length === 0) return null;
-
-  const periods = chrono.map(d => {
-    const row = { label: d.date.slice(5).replace('-', '/') }; // "2026-06-25" → "06/25"
-    topCategories.forEach(cat => { row[cat] = 0; });
-    (d.테마 || []).forEach(t => {
-      if (t.카테고리 && row[t.카테고리] !== undefined) row[t.카테고리] += 1;
-    });
-    return row;
+// 카테고리별 종목 수를 세어 상위 5개를 순위대로 반환한다(그날 거래대금 상위 50 중 — 기타는
+// 제외, CategoryPieCarousel과 동일하게 진짜 섹터만 순위 경쟁). 카테고리가 하나도 없는
+// 날(과거 미백필분)은 null — 그 날짜를 추이에서 통째로 제외한다.
+function rankCategoriesByDay(items) {
+  const counts = {};
+  (items || []).forEach(it => {
+    if (it.카테고리 && it.카테고리 !== '기타') counts[it.카테고리] = (counts[it.카테고리] || 0) + 1;
   });
-
-  const metrics = topCategories.map((cat, i) => ({ key: cat, label: cat, color: TREND_PALETTE[i] }));
-  return { periods, metrics };
+  if (Object.keys(counts).length === 0) return null;
+  return Object.entries(counts)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])) // 동률이면 항상 같은 순서(결정적)
+    .slice(0, 5)
+    .map(([category, count]) => ({ category, count }));
 }
 
-function ThemeCategoryTrend({ themeTrend }) {
-  const agg = useMemo(() => (themeTrend ? aggregateThemeTrend(themeTrend) : null), [themeTrend]);
-  if (!agg) return null; // 카테고리 데이터가 아예 없으면 섹션 자체를 숨김(다른 빈 섹션과 동일 패턴)
+// themeTrend(api/getThemeTrend.js 응답의 days 배열, 최신순, 각 {date, 거래대금})을 표에
+// 그릴 날짜별 TOP5 칸으로 바꾼다. 카테고리가 있는 날짜만 남기고(과거 미백필 날짜는 통째로
+// 제외, 2026-06-28) 가장 오래된 보이는 칸도 전날과 정확히 비교할 수 있게, 표시할 날짜
+// 수보다 하루치 더 가져와 비교 전용(baseline)으로만 쓰고 화면에는 그리지 않는다.
+function buildCategoryRankTrend(days, visibleCount = 15) {
+  const chrono = [...days].reverse(); // 과거 → 최신
+  const ranked = chrono
+    .map(d => ({ date: d.date, ranks: rankCategoriesByDay(d.거래대금) }))
+    .filter(d => d.ranks !== null);
+  if (ranked.length === 0) return null;
+
+  const windowed = ranked.slice(-(visibleCount + 1));
+  const hasBaseline = windowed.length > visibleCount;
+  const baseline = hasBaseline ? windowed[0] : null;
+  const visible = hasBaseline ? windowed.slice(1) : windowed;
+
+  return visible.map((day, i) => {
+    const prevDay = i === 0 ? baseline : visible[i - 1];
+    const prevRankOf = {};
+    (prevDay?.ranks || []).forEach((r, idx) => { prevRankOf[r.category] = idx + 1; });
+
+    const cells = day.ranks.map((r, idx) => {
+      const rank = idx + 1;
+      const prevRank = prevRankOf[r.category];
+      let state = 'same';
+      if (prevRank === undefined) state = prevDay ? 'new' : 'same'; // 비교 대상이 없으면 중립
+      else if (rank < prevRank) state = 'up';   // 숫자가 작아짐 = 더 상위로(상승) = 빨강
+      else if (rank > prevRank) state = 'down'; // 숫자가 커짐 = 더 하위로(하락) = 파랑
+      return { category: r.category, count: r.count, state };
+    });
+    return { date: day.date, cells };
+  });
+}
+
+function CategoryRankTrend({ themeTrend }) {
+  const columns = useMemo(() => (themeTrend ? buildCategoryRankTrend(themeTrend) : null), [themeTrend]);
+  if (!columns || columns.length === 0) return null; // 카테고리 데이터가 아예 없으면 섹션 자체를 숨김
+
+  const maxRows = Math.max(...columns.map(c => c.cells.length));
+
   return (
-    <TrendChart
-      type="line"
-      title={`최근 ${agg.periods.length}일 테마 카테고리 등장 빈도`}
-      periods={agg.periods}
-      metrics={agg.metrics}
-    />
+    <div className="cat-trend-block">
+      <div className="trend-chart-title">{`최근 ${columns.length}영업일 거래대금 카테고리 TOP5 추이`}</div>
+      <div className="cat-trend-wrap">
+        <table className="cat-trend-table">
+          <thead>
+            <tr>
+              <th className="cat-trend-rank-col"></th>
+              {columns.map(c => <th key={c.date}>{c.date.slice(5).replace('-', '/')}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {Array.from({ length: maxRows }, (_, i) => (
+              <tr key={i}>
+                <td className="cat-trend-rank-col">{i + 1}위</td>
+                {columns.map(c => {
+                  const cell = c.cells[i];
+                  return (
+                    <td key={c.date} className={cell ? `cat-trend-${cell.state}` : ''}>
+                      {cell ? `${cell.category} (${cell.count})` : '-'}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 
@@ -219,7 +263,7 @@ export default function Analysis({ analysisExcel, aiAnalysis, themeTrend, vol, r
   return (
     <div>
       {hasTheme && <ThemeTable themes={aiAnalysis.테마} />}
-      <ThemeCategoryTrend themeTrend={themeTrend} />
+      <CategoryRankTrend themeTrend={themeTrend} />
       <CategoryPieCarousel vol={vol} rate={rate} aiAnalysis={aiAnalysis} />
 
       {hasAi && (
