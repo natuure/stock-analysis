@@ -3,8 +3,9 @@
 export const TREND_PALETTE = ['#3182f6', '#9b59b6', '#f04452', '#2ecc71', '#f39c12', '#1abc9c'];
 
 export function TrendChart({ periods, metrics, type, title, showValues, valueFormatter = v => v.toFixed(1) }) {
-  // showValues는 라인 차트에서 각 표식 위에 값을 숫자로 같이 보여준다(2026-06-27, 사용자
-  // 요청 — 막대 차트는 길이로 이미 값이 보이니 적용 안 함). 라벨이 들어갈 위쪽 여백(PAD_T)을
+  // showValues는 각 표식/막대 위에 값을 숫자로 같이 보여준다(라인 차트엔 먼저 추가 — 막대는
+  // 길이로 이미 값이 보인다고 판단해 처음엔 제외했으나, 이후 사용자 피드백으로 막대도 지원
+  // 추가: 높이만으로는 정확한 수치 비교가 어려움). 라벨이 들어갈 위쪽 여백(PAD_T)을
   // 더 두는 것만으론 부족함 — 두 계열의 값이 서로 가까우면(예: ROE 8.1%·영업이익률 6.2%처럼
   // 차이가 작으면) 점 사이 간격 자체가 좁아서 라벨끼리 겹친다(글꼴 크기는 고정인데 같은 비율로
   // 줄어들지 않으므로 차트를 단순히 더 "늘려서" 그리는 건 효과가 없음 — viewBox를 그대로 두고
@@ -40,7 +41,17 @@ export function TrendChart({ periods, metrics, type, title, showValues, valueFor
               const yv = y(v);
               const top = Math.min(yv, zeroY);
               const h = Math.max(Math.abs(yv - zeroY), 0.5);
-              return <rect key={`${m.key}-${i}`} x={x} y={top} width={barW * 0.85} height={h} fill={m.color} />;
+              const bw = barW * 0.85;
+              return (
+                <g key={`${m.key}-${i}`}>
+                  <rect x={x} y={top} width={bw} height={h} fill={m.color} />
+                  {showValues && (
+                    <text x={x + bw / 2} y={top - 4} textAnchor="middle" className="trend-point-label" fill={m.color}>
+                      {valueFormatter(v)}
+                    </text>
+                  )}
+                </g>
+              );
             }))
           : metrics.map(m => {
               const pts = periods

@@ -82,7 +82,7 @@ function IncomeStatementView({ data }) {
           </div>
         ))}
       </div>
-      <TrendChart type="bar" title="매출액·영업이익·당기순이익 추이 (억원)" periods={amountPeriods} metrics={[
+      <TrendChart type="bar" title="매출액·영업이익·당기순이익 추이 (억원)" periods={amountPeriods} showValues valueFormatter={fmtN} metrics={[
         { key: '매출액',   label: '매출액',   color: TREND_PALETTE[0] },
         { key: '영업이익', label: '영업이익', color: TREND_PALETTE[1] },
         { key: '당기순이익', label: '당기순이익', color: TREND_PALETTE[2] },
