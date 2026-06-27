@@ -24,6 +24,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 from dotenv import load_dotenv
 from pymongo import MongoClient
+import FinanceDataReader as fdr
 
 load_dotenv('.env.local')
 
@@ -120,15 +121,28 @@ def load_corp_codes():
     r.raise_for_status()
     zf = zipfile.ZipFile(io.BytesIO(r.content))
     root = ET.fromstring(zf.read(zf.namelist()[0]))
+    # DART corpCode.xml에는 같은 회사명이 둘 이상의 corp_code로 중복 등장하는 경우가 있다
+    # (예: 합병·재상장으로 옛 상장사 entry가 같은 이름의 신규 상장사 entry와 같이 남아있음 —
+    # 직접 확인, 2026-06-27: '원텍'이 폐지된 stock_code 216280(2022년 합병)과 현재 상장된
+    # 336570 두 개로 동시에 존재해, XML 등장 순서상 뒤에 오는 쪽이 그냥 덮어써서 폐지된
+    # 종목이 캐싱되는 버그가 있었음 — 우리금융지주·미래에셋증권·삼성물산·SK 등 29개 종목명
+    # 에서도 같은 충돌이 확인됨). 이름이 충돌하면 KRX에 현재 실제로 상장돼 있는 stock_code
+    # 쪽을 우선한다.
+    active_codes = set(fdr.StockListing('KRX')['Code'])
     mapping = {}
     for node in root.findall('list'):
         stock_code = (node.findtext('stock_code') or '').strip()
         if not stock_code:
             continue  # 비상장사 제외
-        mapping[(node.findtext('corp_name') or '').strip()] = {
+        name = (node.findtext('corp_name') or '').strip()
+        entry = {
             'corp_code': (node.findtext('corp_code') or '').strip(),
             'stock_code': stock_code,
         }
+        existing = mapping.get(name)
+        if existing and existing['stock_code'] in active_codes and stock_code not in active_codes:
+            continue  # 기존에 이미 활성 상장사가 있으면 폐지된 종목으로 덮어쓰지 않음
+        mapping[name] = entry
     with open(CORP_CODE_CACHE, 'w', encoding='utf-8') as f:
         json.dump(mapping, f, ensure_ascii=False)
     return mapping
