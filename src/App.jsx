@@ -186,6 +186,7 @@ export default function App() {
                 onTab={setTab}
                 dateISO={weekIdx?.lastTradingDate}
                 onJumpToStock={jumpToStockAnalysis}
+                showHigh60Rate={false}
               />
             </main>
           )}
