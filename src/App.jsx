@@ -3,13 +3,24 @@ import Header from './components/Header';
 import TopTabs from './components/TopTabs';
 import Calendar from './components/Calendar';
 import IndexSummary from './components/IndexSummary';
-import Analysis from './components/Analysis';
+import Analysis, { CategoryPieCarousel } from './components/Analysis';
 import Tables from './components/Tables';
 import StockAnalysis from './components/StockAnalysis';
 import {
   dateToISO, CACHE_VERSION,
   saveAnalysisToStorage, loadAnalysisFromStorage,
 } from './utils';
+
+// 주간 vol/rate 항목(주간분석.py가 그 주 일간 ai_analysis에서 찾은 카테고리를 name 옆에
+// 바로 채워둠)을 CategoryPieCarousel이 기대하는 aiAnalysis.거래대금/등락률 모양
+// (종목명+카테고리)으로 바꾼다 — 일간처럼 별도 ai_analysis 문서가 없으므로 그 자리를
+// 주간 항목 자신으로 대신한다. 카테고리가 없는 항목(그 주 어느 날의 일간 상위 50에도
+// 없었던 종목)은 빼서, aggregateByCategory()가 일간과 동일하게 '기타'로 폴백하게 한다.
+function toWeeklyAiItems(items) {
+  return (items || [])
+    .filter(s => s.카테고리)
+    .map(s => ({ 종목명: s.name, 카테고리: s.카테고리, 신규카테고리후보: s.신규카테고리후보 }));
+}
 
 export default function App() {
   const [vol,     setVol]     = useState(null);
@@ -177,6 +188,13 @@ export default function App() {
           )}
           {weekData && weekVolRate && (
             <main>
+              <CategoryPieCarousel
+                vol={weekVolRate.vol} rate={weekVolRate.rate}
+                aiAnalysis={{
+                  거래대금: toWeeklyAiItems(weekVolRate.vol),
+                  등락률: toWeeklyAiItems(weekVolRate.rate),
+                }}
+              />
               <h2 className="sec-title" style={{ marginTop: 36 }}>주간 종목 데이터</h2>
               <Tables
                 vol={weekVolRate.vol} rate={weekVolRate.rate}

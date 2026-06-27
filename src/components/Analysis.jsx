@@ -171,7 +171,7 @@ function aggregateByCategory(items, aiItems) {
   return { slices };
 }
 
-function CategoryPieCarousel({ vol, rate, aiAnalysis }) {
+export function CategoryPieCarousel({ vol, rate, aiAnalysis }) {
   const volAgg  = useMemo(() => aggregateByCategory(vol,  aiAnalysis?.거래대금 || []), [vol, aiAnalysis]);
   const rateAgg = useMemo(() => aggregateByCategory(rate, aiAnalysis?.등락률   || []), [rate, aiAnalysis]);
   const [page, setPage] = useState(0);

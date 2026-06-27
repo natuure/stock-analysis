@@ -6,6 +6,9 @@
   - MongoDB weekly_indices 컬렉션에 해당 주차 1건
     {kospi, kosdaq: {close, change, changeRate}, vol, rate: [...50개], lastTradingDate} 저장
     (vol/rate는 뉴스분석.py와 동일하게 KIS 통합(KRX+NXT) 보강을 거침, 2026-06-27 추가)
+    (vol/rate 각 항목에 그 주 일간 ai_analysis에서 찾은 카테고리도 채움 — 매칭 안 되는
+    종목은 필드 자체가 없음, 웹앱 "주간 거래대금·등락률 카테고리 비중" 도넛에 쓰임,
+    2026-06-27 추가)
   - 웹앱 달력의 그 주 주차(W##) 칸이 이 값을 읽어 표시
 """
 
@@ -243,6 +246,56 @@ def build_weekly_vol_rate_from_enriched(enriched, prev_ranks, rate_min_amount_mi
     return vol, rate
 
 
+# ── 주간 거래대금·등락률 카테고리 비중 (2026-06-27 추가) ──────────────────────
+# 주간분석.py는 Claude/Codex를 호출하지 않으므로 카테고리를 직접 분류할 수 없다. 대신 그 주
+# 거래일들에 대해 이미 만들어진 일간 ai_analysis(Claude/Codex 생성, 저장분석.py가 저장)에서
+# 종목명별 카테고리를 모아 재사용한다 — 일간 표의 "거래대금·등락률 카테고리 비중"
+# 도넛(`CategoryPieCarousel`)이 하는 매칭(날짜의 vol/rate를 ai_analysis.거래대금/등락률과
+# 종목명으로 매칭)을 한 주 단위로 적용한 것.
+
+def fetch_weekly_category_map(trading_dates):
+    """그 주 거래일들의 ai_analysis에서 종목명별 카테고리를 모아
+    {종목명: {'카테고리':..., '신규카테고리후보':...}}로 반환한다. 같은 종목이 그 주 여러
+    날 다른 카테고리로 분류돼 있으면 더 최근 날짜의 분류로 덮어쓴다(날짜 오름차순으로 순회
+    — "분석하는 시점에 가장 부합하는 카테고리를 쓰고 과거와 맞추지 않는다"는 일간 원칙을
+    한 주 내에서도 그대로 적용). 그 주에 ai_analysis가 하나도 없으면(아직 분석 안 함,
+    또는 카테고리 도입 전인 2026-06-25 이전 주) 빈 dict를 반환 — 프론트엔드가 일간과
+    동일하게 카테고리 차트 섹션 자체를 숨기게 된다."""
+    if not MONGODB_URI:
+        return {}
+    date_strs = sorted(d.strftime('%Y-%m-%d') for d in trading_dates)
+    client = MongoClient(MONGODB_URI)
+    docs = list(client.get_default_database()['ai_analysis'].find({'_id': {'$in': date_strs}}))
+    client.close()
+    docs.sort(key=lambda d: d['_id'])
+
+    cat_map = {}
+    for doc in docs:
+        analysis = doc.get('analysis', {})
+        for key in ('거래대금', '등락률'):
+            for item in analysis.get(key, []):
+                name = item.get('종목명')
+                cat = item.get('카테고리')
+                if name and cat:
+                    cat_map[name] = {'카테고리': cat, '신규카테고리후보': item.get('신규카테고리후보')}
+    return cat_map
+
+
+def attach_categories(items, cat_map):
+    """vol/rate 항목에 cat_map에서 찾은 카테고리를 채운다. 매칭 안 되는 종목(그 주 어느
+    날의 일간 거래대금·등락률 상위 50에도 없었던 경우 등)은 필드를 아예 안 붙인다 —
+    프론트엔드의 aggregateByCategory()가 일간과 동일하게 매칭 실패를 '기타'로 폴백하므로
+    여기서 직접 '기타'를 채우지 않는다(그러면 모든 항목이 항상 카테고리를 갖게 돼,
+    "그 주에 카테고리 데이터가 전혀 없다"는 신호(cat_map 비어있음)와 구분이 안 됨)."""
+    for s in items:
+        info = cat_map.get(s['name'])
+        if not info:
+            continue
+        s['카테고리'] = info['카테고리']
+        if info['카테고리'] == '기타' and info.get('신규카테고리후보'):
+            s['신규카테고리후보'] = info['신규카테고리후보']
+
+
 def get_previous_week_vol_ranks(week_key_str):
     """직전 주(weekly_indices 중 vol 필드가 있고 (year, iso주차)가 week_key_str보다 작은
     가장 최근 문서)의 거래대금 순위를 {종목코드: 순위}로 반환. weekly_indices의 _id는
@@ -321,10 +374,15 @@ def main():
 
         if enriched is not None:
             vol, rate = build_weekly_vol_rate_from_enriched(enriched, prev_ranks, rate_min / 1_000_000)
+            cat_map = fetch_weekly_category_map(trading_dates)
+            attach_categories(vol, cat_map)
+            attach_categories(rate, cat_map)
             entry['vol']  = vol
             entry['rate'] = rate
             entry['lastTradingDate'] = week_anchor_date_str
-            print(f'주간 거래대금 상위 {len(vol)}개, 등락률 상위 {len(rate)}개 종목 산출 완료')
+            matched = sum(1 for s in vol + rate if '카테고리' in s)
+            print(f'주간 거래대금 상위 {len(vol)}개, 등락률 상위 {len(rate)}개 종목 산출 완료'
+                  f' (일간 분석에서 카테고리 매칭 {matched}/{len(vol) + len(rate)})')
         else:
             print('[경고] KIS 보강 실패 — 이번 실행에서는 주간 거래대금/등락률을 저장하지 않습니다.')
 
