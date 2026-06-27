@@ -90,10 +90,10 @@ function IncomeStatementView({ data }) {
         { key: '영업이익', label: '영업이익', color: TREND_PALETTE[1] },
         { key: '당기순이익', label: '당기순이익', color: TREND_PALETTE[2] },
       ]} />
-      <TrendChart type="line" title="영업이익률 추이 (%)" periods={marginPeriods} showValues valueFormatter={fmtPct} metrics={[
+      <TrendChart type="bar" title="영업이익률 추이 (%)" periods={marginPeriods} showValues valueFormatter={fmtPct} metrics={[
         { key: '영업이익률', label: '영업이익률', color: TREND_PALETTE[0] },
       ]} />
-      <TrendChart type="line" title="ROE·주당순이익 추이 (%, 원)" periods={roeEpsPeriods} showValues metrics={[
+      <TrendChart type="bar" title="ROE·주당순이익 추이 (%, 원)" periods={roeEpsPeriods} showValues metrics={[
         { key: 'ROE',       label: 'ROE',       color: TREND_PALETTE[1], valueFormatter: fmtPct },
         { key: '주당순이익', label: '주당순이익', color: TREND_PALETTE[2], axis: 'right', valueFormatter: fmtWon },
       ]} />
