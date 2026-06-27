@@ -109,7 +109,14 @@
 - localStorage `analysis_dates` + MongoDB `serverDates` 합쳐서 초록 점 표시
 - 날짜 클릭 → localStorage 우선(단, `_v === CACHE_VERSION`일 때만, [DATA_PIPELINE.md](DATA_PIPELINE.md) 참고),
   없으면 MongoDB에서 로드 후 localStorage 캐시
-- 주간(W##) 클릭 → 주간 요약 표시
+- 주간(W##) 클릭 → 주간 요약 표시(코스피/코스닥) + **주간 거래대금/등락률 상위 50 표**
+  (2026-06-27 추가) — `App.jsx`의 `onWeekClick`이 `weeklyIdx`(마운트 시 1회 받은 가벼운
+  요약, kospi/kosdaq/lastTradingDate만)로 카드부터 즉시 띄우고, `/api/getData?week=`을
+  새로 호출(지연 조회)해 그 주차에 `vol`/`rate`가 있으면 "주간 종목 데이터" 표를 추가로
+  띄움. `Tables.jsx`를 수정 없이 그대로 재사용(필드 모양을 일간과 동일하게 맞춤,
+  `high60Rate`만 비움 — 이미 `-`로 안전하게 표시됨). 일간 표(`showMain`)와는 형제 블록으로
+  서로 배타적으로만 보임. `vol`/`rate`가 없는 과거 주차(2026-06-27 이전)는 표 없이 지수
+  카드만 보임 — 의도된 동작, 백필 안 함.
 
 ### IndexSummary.jsx
 - 달력 바로 아래, "오늘의 코스피/코스닥" 제목 + 2칸 그리드
@@ -226,6 +233,12 @@ meet`)으로 둔다는 점**(`TrendChart`는 막대/꺾은선이라 `none`으로
 카테고리 이름을 `title` 툴팁으로 보여줌(2026-06-27 추가).
 
 ### Tables.jsx
+- **주차(W##) 클릭 시 "주간 종목 데이터"도 이 컴포넌트를 그대로 재사용**(2026-06-27 추가,
+  `App.jsx` 참고) — 별도 주간용 표 컴포넌트를 새로 만들지 않고, `주간분석.py`가 만드는
+  주간 `vol`/`rate` 항목의 필드 모양을 일간(`stock_data`)과 동일하게 맞춰서(`high60Rate`만
+  없음, 이미 `-`로 안전하게 표시됨) `<Tables vol={weekVolRate.vol} rate={weekVolRate.rate}
+  .../>`로 그대로 넘김. 일간 표와 정렬(`sortV`/`sortR`)·탭(`tab`) 상태도 공유(두 표는 항상
+  배타적으로만 보이므로 안전).
 - 거래대금/시가총액 카드(구 Cards.jsx) 제거됨(2026-06-22) — 그 핵심 지표(`tradingVolume/marketCap`
   비율)는 거래대금 표의 한 열로 옮김. WICS 업종 분포 카드도 그 전에 이미 제거됨
   ([HISTORY.md](HISTORY.md) 참고)

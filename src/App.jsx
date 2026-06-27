@@ -33,6 +33,7 @@ export default function App() {
   const [serverDates, setServerDates] = useState([]);
   const [weeklyIdx,   setWeeklyIdx]   = useState({});
   const [weekSelected, setWeekSelected] = useState(null);
+  const [weekVolRate, setWeekVolRate] = useState(null); // 선택한 주차의 {vol, rate} 또는 null
   const [themeTrend,  setThemeTrend]  = useState(null);
 
   const volRef  = useRef(null);
@@ -155,7 +156,17 @@ export default function App() {
               setIndices(null); setAnalysisExcel(null); setAiAnalysis(null);
               setCalSelected(null);
               const idx = weeklyIdx[weekKey];
-              setWeekSelected(idx && idx.kospi && idx.kosdaq ? weekKey : null);
+              const valid = idx && idx.kospi && idx.kosdaq ? weekKey : null;
+              setWeekSelected(valid);
+              setWeekVolRate(null); // 이전 주차의 표를 먼저 지움(전환 중 잔존 데이터 방지)
+              if (valid) {
+                fetch(`/api/getData?week=${weekKey}`)
+                  .then(r => r.json())
+                  .then(({ vol, rate }) => {
+                    if (vol && rate) setWeekVolRate({ vol, rate });
+                  })
+                  .catch(() => {});
+              }
             }}
           />
           {(weekData || (showMain && indices)) && (
@@ -163,6 +174,20 @@ export default function App() {
               indices={weekData || indices}
               title={weekData ? '금주의 코스피/코스닥' : '오늘의 코스피/코스닥'}
             />
+          )}
+          {weekData && weekVolRate && (
+            <main>
+              <h2 className="sec-title" style={{ marginTop: 36 }}>주간 종목 데이터</h2>
+              <Tables
+                vol={weekVolRate.vol} rate={weekVolRate.rate}
+                sortV={sortV} sortR={sortR}
+                tab={tab}
+                onSort={handleSort}
+                onTab={setTab}
+                dateISO={weekIdx?.lastTradingDate}
+                onJumpToStock={jumpToStockAnalysis}
+              />
+            </main>
           )}
           {showMain && (
             <main>
