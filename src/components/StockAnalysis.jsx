@@ -66,14 +66,8 @@ function IncomeStatementView({ data }) {
   // ROE = 당기순이익 / 지배기업소유주지분(분기엔 없어 자본총계로 대체) — 분기도 연환산 안
   // 하고 그 기간 실적 그대로(영업이익률과 같은 방식, 2026-06-27 ROE 라인 추가).
   const marginPeriods = periods.map(p => ({ label: p.label, 영업이익률: ratioOf(p.영업이익, p.매출액) }));
-  // ROE(%)·주당순이익(원)은 크기 단위가 완전히 달라(ROE 10~30대, EPS 만원대) 같은 축에 그리면
-  // ROE가 0 근처에 눌려 안 보임 — TrendChart의 axis:'right' 보조축으로 분리(2026-06-28,
-  // 사용자 요청으로 두 추이를 한 차트에 합치면서 추가).
-  const roeEpsPeriods = periods.map(p => ({
-    label: p.label,
-    ROE: ratioOf(p.당기순이익, p.지배기업소유주지분 || p.자본총계),
-    주당순이익: p.기본주당이익_DART,
-  }));
+  const roePeriods = periods.map(p => ({ label: p.label, ROE: ratioOf(p.당기순이익, p.지배기업소유주지분 || p.자본총계) }));
+  const epsPeriods = periods.map(p => ({ label: p.label, 주당순이익: p.기본주당이익_DART }));
 
   return (
     <div>
@@ -93,9 +87,11 @@ function IncomeStatementView({ data }) {
       <TrendChart type="bar" title="영업이익률 추이 (%)" periods={marginPeriods} showValues valueFormatter={fmtPct} metrics={[
         { key: '영업이익률', label: '영업이익률', color: TREND_PALETTE[0] },
       ]} />
-      <TrendChart type="bar" title="ROE·주당순이익 추이 (%, 원)" periods={roeEpsPeriods} showValues metrics={[
-        { key: 'ROE',       label: 'ROE',       color: TREND_PALETTE[1], valueFormatter: fmtPct },
-        { key: '주당순이익', label: '주당순이익', color: TREND_PALETTE[2], axis: 'right', valueFormatter: fmtWon },
+      <TrendChart type="bar" title="ROE 추이 (%)" periods={roePeriods} showValues valueFormatter={fmtPct} metrics={[
+        { key: 'ROE', label: 'ROE', color: TREND_PALETTE[1] },
+      ]} />
+      <TrendChart type="bar" title="주당순이익 추이 (원)" periods={epsPeriods} showValues valueFormatter={fmtWon} metrics={[
+        { key: '주당순이익', label: '주당순이익', color: TREND_PALETTE[2] },
       ]} />
     </div>
   );
@@ -138,13 +134,15 @@ function BalanceSheetView({ data }) {
     현금:    ratioOf(p.현금및현금성자산, p.자산총계),
   }));
   const debtPeriods = periods.map(p => ({ label: p.label, 부채비율: ratioOf(p.부채총계, p.자본총계) }));
-  const amountPeriods = periods.map(p => ({
+  // 선수금은 회사별로 자본금·자본잉여금·이익잉여금보다 자릿수가 훨씬 작은 경우가 많아(같은
+  // 차트에 묶으면 막대가 거의 안 보임) 별도 차트로 분리(2026-06-28, 사용자 요청).
+  const capitalPeriods = periods.map(p => ({
     label: p.label,
-    선수금:   p.선수금 != null ? p.선수금 / 1e8 : null,
     자본금:   p.자본금 != null ? p.자본금 / 1e8 : null,
     자본잉여금: p.자본잉여금 != null ? p.자본잉여금 / 1e8 : null,
     이익잉여금: p.이익잉여금 != null ? p.이익잉여금 / 1e8 : null,
   }));
+  const advancesPeriods = periods.map(p => ({ label: p.label, 선수금: p.선수금 != null ? p.선수금 / 1e8 : null }));
 
   return (
     <div>
@@ -165,11 +163,13 @@ function BalanceSheetView({ data }) {
       <TrendChart type="line" title="부채비율 추이 (%)" periods={debtPeriods} showValues valueFormatter={fmtPct} metrics={[
         { key: '부채비율', label: '부채비율', color: TREND_PALETTE[2] },
       ]} />
-      <TrendChart type="bar" title="선수금·자본금·자본잉여금·이익잉여금 추이 (억원)" periods={amountPeriods} metrics={[
-        { key: '선수금',   label: '선수금',   color: TREND_PALETTE[0] },
+      <TrendChart type="bar" title="자본금·자본잉여금·이익잉여금 추이 (억원)" periods={capitalPeriods} showValues valueFormatter={fmtN} metrics={[
         { key: '자본금',   label: '자본금',   color: TREND_PALETTE[1] },
         { key: '자본잉여금', label: '자본잉여금', color: TREND_PALETTE[2] },
         { key: '이익잉여금', label: '이익잉여금', color: TREND_PALETTE[3] },
+      ]} />
+      <TrendChart type="bar" title="선수금 추이 (억원)" periods={advancesPeriods} showValues valueFormatter={fmtN} metrics={[
+        { key: '선수금', label: '선수금', color: TREND_PALETTE[0] },
       ]} />
     </div>
   );
