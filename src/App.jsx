@@ -205,6 +205,7 @@ export default function App() {
                 dateISO={weekIdx?.lastTradingDate}
                 onJumpToStock={jumpToStockAnalysis}
                 showHigh60Rate={false}
+                showCategory
               />
             </main>
           )}
