@@ -275,8 +275,8 @@ export default function Analysis({ analysisExcel, aiAnalysis, themeTrend, vol, r
   return (
     <div>
       {hasTheme && <ThemeTable themes={aiAnalysis.테마} />}
-      <CategoryRankTrend themeTrend={themeTrend} />
       <CategoryPieCarousel vol={vol} rate={rate} aiAnalysis={aiAnalysis} />
+      <CategoryRankTrend themeTrend={themeTrend} />
 
       {hasAi && (
         <>
