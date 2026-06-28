@@ -20,17 +20,18 @@ module.exports = async (req, res) => {
 
   try {
     const col = await getCol();
-    // "거래대금 카테고리 TOP5 추이" 표용 — 예전엔 analysis.테마(요약 태그)를 줬으나
-    // 2026-06-28부터 그날 거래대금 상위 50 종목별 카테고리를 직접 집계하는 방식으로
-    // 바뀌어 analysis.거래대금을 내려준다(FRONTEND.md 참고).
+    // "거래대금/등락률 카테고리 TOP5 추이" 표용 — 예전엔 analysis.테마(요약 태그)를 줬으나
+    // 2026-06-28부터 그날 거래대금·등락률 상위 50 종목별 카테고리를 직접 집계하는 방식으로
+    // 바뀌어 analysis.거래대금/analysis.등락률을 내려준다(등락률 추이는 2026-06-28에
+    // 거래대금과 같은 패턴으로 추가됨, FRONTEND.md 참고).
     const docs = await col
-      .find({ analysis: { $exists: true } }, { projection: { _id: 1, 'analysis.거래대금': 1 } })
+      .find({ analysis: { $exists: true } }, { projection: { _id: 1, 'analysis.거래대금': 1, 'analysis.등락률': 1 } })
       .sort({ _id: -1 })
       .limit(days)
       .toArray();
 
     return res.json({
-      days: docs.map(d => ({ date: d._id, 거래대금: d.analysis?.거래대금 || [] })),
+      days: docs.map(d => ({ date: d._id, 거래대금: d.analysis?.거래대금 || [], 등락률: d.analysis?.등락률 || [] })),
     });
   } catch (e) {
     return res.status(500).json({ error: e.message });

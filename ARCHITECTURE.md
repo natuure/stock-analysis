@@ -67,8 +67,9 @@ Python (로컬 실행, 고정 IP)
 │   │                             KIS로 현재가 실시간 덮어씀(실패 시에만 저장된 quote 폴백)
 │   ├── analyzeCompany.js       # GET ?name=종목명 → 미분석 종목을 DART+KIS로 즉석 분석해 company_analysis에
 │   │                             저장 후 반환(2026-06-27, Claude 미사용 — 종목분석.py의 JS 포팅)
-│   ├── getThemeTrend.js        # GET ?days=(기본 14) → ai_analysis에서 최근 N일 거래대금 배열만 프로젝션해
-│   │                             반환(2026-06-28부터 테마 대신 거래대금 — "거래대금 카테고리 TOP5 추이" 표용)
+│   ├── getThemeTrend.js        # GET ?days=(기본 14) → ai_analysis에서 최근 N일 거래대금·등락률 배열만
+│   │                             프로젝션해 반환(2026-06-28부터 테마 대신 거래대금/등락률 — "거래대금·
+│   │                             등락률 카테고리 TOP5 추이" 표 2개용)
 │   ├── _kis.js                 # KIS 접근토큰 발급·캐싱 + fetchLiveQuote(현재가 조회) 공용 모듈(라우트 아님,
 │   │                             candles.js·getCompanyOverview.js·analyzeCompany.js가 import)
 │   └── _dart.js                # DART 재무제표 추출·corp_code 조회 공용 모듈(라우트 아님, analyzeCompany.js가
@@ -133,7 +134,7 @@ Python (로컬 실행, 고정 IP)
 |-----------|--------|------|
 | `/api/getData` | GET | date/week 둘 다 없음: 날짜 목록 + weeklyIndices(주차별 kospi/kosdaq/lastTradingDate만, 가벼운 요약) 반환 / date 있음: 해당일 vol+rate+indices 반환 / week 있음: 그 주차의 kospi+kosdaq+vol+rate+lastTradingDate 전체 반환(2026-06-27 추가) |
 | `/api/getAnalysis` | GET | `?date=YYYY-MM-DD` → ai_analysis 반환 |
-| `/api/getThemeTrend` | GET | `?days=`(기본 14, 최대 90) → ai_analysis에서 최근 N일의 `거래대금` 배열만 프로젝션해 반환(테마/등락률 제외, 날짜 내림차순, 2026-06-28부터 `테마`에서 `거래대금`으로 교체) — "거래대금·등락률 분석" 탭의 거래대금 카테고리 TOP5 추이 표용 |
+| `/api/getThemeTrend` | GET | `?days=`(기본 14, 최대 90) → ai_analysis에서 최근 N일의 `거래대금`/`등락률` 배열만 프로젝션해 반환(테마 제외, 날짜 내림차순, 2026-06-28부터 `테마`에서 `거래대금`/`등락률`로 교체) — "거래대금·등락률 분석" 탭의 거래대금·등락률 카테고리 TOP5 추이 표 2개용 |
 | `/api/analyzeStocks` | POST | Claude API 프록시 (현재 미사용) |
 | `/api/candles` | GET | `?symbol=&date=` → KIS Open API로 일봉 캔들 85개 실시간 조회. 실패 시에만 MongoDB `candles`(토스 캐시) 폴백 |
 | `/api/getCompanyOverview` | GET | code 없음: company_analysis 전체 목록(`name`+`stock_code`, 검색 자동완성용) / `?code=종목코드`: 단건 조회 + KIS Open API로 현재가를 실시간 재조회해 `quote` 덮어씀(실패 시에만 저장된 `quote` 폴백) |

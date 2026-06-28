@@ -49,14 +49,16 @@ function rankCategoriesByDay(items) {
     .map(([category, count]) => ({ category, count }));
 }
 
-// themeTrend(api/getThemeTrend.js 응답의 days 배열, 최신순, 각 {date, 거래대금})을 표에
-// 그릴 날짜별 TOP5 칸으로 바꾼다. 카테고리가 있는 날짜만 남기고(과거 미백필 날짜는 통째로
-// 제외, 2026-06-28) 가장 오래된 보이는 칸도 전날과 정확히 비교할 수 있게, 표시할 날짜
-// 수보다 하루치 더 가져와 비교 전용(baseline)으로만 쓰고 화면에는 그리지 않는다.
-function buildCategoryRankTrend(days, visibleCount = 15) {
+// themeTrend(api/getThemeTrend.js 응답의 days 배열, 최신순, 각 {date, 거래대금, 등락률})을
+// 표에 그릴 날짜별 TOP5 칸으로 바꾼다. field로 '거래대금'/'등락률' 중 어느 배열을 집계할지
+// 고른다(2026-06-28, 등락률 추이 추가 — 그 전엔 거래대금 전용이었음). 카테고리가 있는
+// 날짜만 남기고(과거 미백필 날짜는 통째로 제외, 2026-06-28) 가장 오래된 보이는 칸도 전날과
+// 정확히 비교할 수 있게, 표시할 날짜 수보다 하루치 더 가져와 비교 전용(baseline)으로만
+// 쓰고 화면에는 그리지 않는다.
+function buildCategoryRankTrend(days, field, visibleCount = 15) {
   const chrono = [...days].reverse(); // 과거 → 최신
   const ranked = chrono
-    .map(d => ({ date: d.date, ranks: rankCategoriesByDay(d.거래대금) }))
+    .map(d => ({ date: d.date, ranks: rankCategoriesByDay(d[field]) }))
     .filter(d => d.ranks !== null);
   if (ranked.length === 0) return null;
 
@@ -83,15 +85,14 @@ function buildCategoryRankTrend(days, visibleCount = 15) {
   });
 }
 
-function CategoryRankTrend({ themeTrend }) {
-  const columns = useMemo(() => (themeTrend ? buildCategoryRankTrend(themeTrend) : null), [themeTrend]);
+function CategoryRankTrendTable({ columns, label }) {
   if (!columns || columns.length === 0) return null; // 카테고리 데이터가 아예 없으면 섹션 자체를 숨김
 
   const maxRows = Math.max(...columns.map(c => c.cells.length));
 
   return (
     <div className="cat-trend-block">
-      <div className="trend-chart-title">{`최근 ${columns.length}영업일 거래대금 카테고리 TOP5 추이`}</div>
+      <div className="trend-chart-title">{`최근 ${columns.length}영업일 ${label} 카테고리 TOP5 추이`}</div>
       <div className="cat-trend-wrap">
         <table className="cat-trend-table">
           <thead>
@@ -118,6 +119,17 @@ function CategoryRankTrend({ themeTrend }) {
         </table>
       </div>
     </div>
+  );
+}
+
+function CategoryRankTrend({ themeTrend }) {
+  const volColumns  = useMemo(() => (themeTrend ? buildCategoryRankTrend(themeTrend, '거래대금') : null), [themeTrend]);
+  const rateColumns = useMemo(() => (themeTrend ? buildCategoryRankTrend(themeTrend, '등락률')   : null), [themeTrend]);
+  return (
+    <>
+      <CategoryRankTrendTable columns={volColumns} label="거래대금" />
+      <CategoryRankTrendTable columns={rateColumns} label="등락률" />
+    </>
   );
 }
 
