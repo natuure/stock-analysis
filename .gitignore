@@ -2,6 +2,7 @@
 node_modules/
 .vercel/
 dist/
+package-lock.json
 
 # 데이터 파일
 데일리분석/
