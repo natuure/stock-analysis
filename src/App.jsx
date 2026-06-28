@@ -194,6 +194,7 @@ export default function App() {
                   거래대금: toWeeklyAiItems(weekVolRate.vol),
                   등락률: toWeeklyAiItems(weekVolRate.rate),
                 }}
+                date={weekIdx?.lastTradingDate}
               />
               <h2 className="sec-title" style={{ marginTop: 36 }}>주간 종목 데이터</h2>
               <Tables
@@ -211,7 +212,7 @@ export default function App() {
           )}
           {showMain && (
             <main>
-              <Analysis analysisExcel={analysisExcel} aiAnalysis={aiAnalysis} themeTrend={themeTrend} vol={vol} rate={rate} />
+              <Analysis analysisExcel={analysisExcel} aiAnalysis={aiAnalysis} themeTrend={themeTrend} vol={vol} rate={rate} date={dateToISO(date)} />
               <h2 className="sec-title" style={{ marginTop: 36 }}>종목 데이터</h2>
               <Tables
                 vol={vol} rate={rate}

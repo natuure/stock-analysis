@@ -133,13 +133,18 @@ function CategoryRankTrend({ themeTrend }) {
   );
 }
 
+// 2026-06-26 페이지(데이터)부터 도넛 차트가 top5+기타로 묶지 않고 그날의 모든 카테고리를
+// 그대로 보여줌 — 그 이전 날짜는 과거 화면 그대로 top5+기타 유지(백필 안 함, 다른 카테고리
+// 관련 변경들과 동일한 원칙).
+const CATEGORY_SHOW_ALL_FROM = '2026-06-26';
+
 // vol/rate(그날 상위 50, 숫자) + aiItems(aiAnalysis.거래대금/등락률, 종목명+카테고리)를
 // 종목명으로 매칭해 카테고리별 "종목 수"를 센다(금액/등락률 합산이 아니라 단순 개수 —
 // 사용자가 비중 대신 "50개 중 몇 종목" 표시를 명시적으로 요청). 매칭 실패/카테고리 없음은
 // "기타"로 폴백(어떤 종목도 누락되지 않고 항상 기타로 흡수됨 — count 합은 항상 items.length).
 // 카테고리별 종목 목록(members, {name, candidate})도 같이 반환해 범례 클릭 시 펼쳐서
 // 보여주는 데 쓴다 — candidate는 신규카테고리후보(있으면 PieChart가 빨간 글씨로 표시).
-function aggregateByCategory(items, aiItems) {
+function aggregateByCategory(items, aiItems, showAll) {
   if (!items || items.length === 0) return null;
 
   const catByName = new Map();
@@ -160,21 +165,22 @@ function aggregateByCategory(items, aiItems) {
   });
 
   const total = items.length;
-  // "5개+기타"는 분류 단계가 아니라 여기(차트 렌더 집계)에서만 적용 — 그날 실제로는
-  // 6개 이상 카테고리가 나올 수 있음.
   const etcMembers = groups['기타'] || [];
   const realCats = Object.entries(groups)
     .filter(([cat]) => cat !== '기타')
     .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0])); // 동률이면 항상 같은 순서
 
-  const top5 = realCats.slice(0, 5);
-  const restMembers = realCats.slice(5).flatMap(([, members]) => members).concat(etcMembers);
+  // "5개+기타"는 분류 단계가 아니라 여기(차트 렌더 집계)에서만 적용 — showAll이면 그날
+  // 실제로 6개 이상이어도 전부 보여주고, 진짜 미분류(etcMembers)만 "기타"로 남긴다.
+  const shownCats = showAll ? realCats : realCats.slice(0, 5);
+  const restMembers = showAll ? etcMembers : realCats.slice(5).flatMap(([, members]) => members).concat(etcMembers);
 
-  const slices = top5.map(([label, members], i) => ({
-    label, members, count: members.length, pct: (members.length / total) * 100, color: TREND_PALETTE[i],
+  const slices = shownCats.map(([label, members], i) => ({
+    label, members, count: members.length, pct: (members.length / total) * 100,
+    color: TREND_PALETTE[i % TREND_PALETTE.length],
   }));
   if (restMembers.length > 0) {
-    // "기타"는 진짜 섹터가 아니라 잔여 묶음이라 팔레트 6번째 색이 아닌 muted 회색으로 구분.
+    // "기타"는 진짜 섹터가 아니라 잔여 묶음이라 팔레트 색이 아닌 muted 회색으로 구분.
     slices.push({
       label: '기타', members: restMembers, count: restMembers.length,
       pct: (restMembers.length / total) * 100, color: 'var(--c-muted)',
@@ -183,9 +189,10 @@ function aggregateByCategory(items, aiItems) {
   return { slices };
 }
 
-export function CategoryPieCarousel({ vol, rate, aiAnalysis }) {
-  const volAgg  = useMemo(() => aggregateByCategory(vol,  aiAnalysis?.거래대금 || []), [vol, aiAnalysis]);
-  const rateAgg = useMemo(() => aggregateByCategory(rate, aiAnalysis?.등락률   || []), [rate, aiAnalysis]);
+export function CategoryPieCarousel({ vol, rate, aiAnalysis, date }) {
+  const showAll = !!date && date >= CATEGORY_SHOW_ALL_FROM;
+  const volAgg  = useMemo(() => aggregateByCategory(vol,  aiAnalysis?.거래대금 || [], showAll), [vol, aiAnalysis, showAll]);
+  const rateAgg = useMemo(() => aggregateByCategory(rate, aiAnalysis?.등락률   || [], showAll), [rate, aiAnalysis, showAll]);
   const [page, setPage] = useState(0);
   const scrollerRef = useRef(null);
   if (!volAgg && !rateAgg) return null; // 둘 다 데이터 없으면 섹션 자체를 숨김
@@ -263,7 +270,7 @@ function AiPanels({ aiAnalysis }) {
   );
 }
 
-export default function Analysis({ analysisExcel, aiAnalysis, themeTrend, vol, rate }) {
+export default function Analysis({ analysisExcel, aiAnalysis, themeTrend, vol, rate, date }) {
   const hasTheme = aiAnalysis?.테마?.length > 0;
   const hasAi    = aiAnalysis && (aiAnalysis.거래대금?.length || aiAnalysis.등락률?.length);
   const hasN     = analysisExcel && analysisExcel.length > 0;
@@ -275,7 +282,7 @@ export default function Analysis({ analysisExcel, aiAnalysis, themeTrend, vol, r
   return (
     <div>
       {hasTheme && <ThemeTable themes={aiAnalysis.테마} />}
-      <CategoryPieCarousel vol={vol} rate={rate} aiAnalysis={aiAnalysis} />
+      <CategoryPieCarousel vol={vol} rate={rate} aiAnalysis={aiAnalysis} date={date} />
       <CategoryRankTrend themeTrend={themeTrend} />
 
       {hasAi && (
