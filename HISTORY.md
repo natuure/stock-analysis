@@ -113,3 +113,9 @@
   폴백" 패턴) — 저장된 `quote`는 이제 KIS 호출 실패 시에만 쓰는 폴백. KIS 접근토큰 발급·캐싱
   로직(`getKisToken`)을 candles.js에서 신설 `api/_kis.js`로 옮겨 두 라우트가 공유하도록 정리
   ([DATA_PIPELINE.md](DATA_PIPELINE.md), [ARCHITECTURE.md](ARCHITECTURE.md) 참고)
+- **`TrendChart`의 보조(우측) y축(`metrics[i].axis: 'right'`)** (2026-06-28 도입 후 같은 날
+  제거): ROE(%)와 주당순이익(원)을 한 차트에 합쳐 보여달라는 요청으로 추가했는데, 두 지표의
+  크기 단위가 완전히 달라(ROE 10~30대, EPS 만원대) 같은 축에 그리면 ROE가 0 근처에 눌려 안
+  보이는 문제가 있어 도입. 하지만 결국 사용자가 영업이익률·ROE·주당순이익 세 지표 모두
+  독립된 단일 계열 막대 차트로 되돌리는 쪽을 선택해, 같은 날 보조 y축 지원 자체를 다시
+  제거함 — 더 쓰는 곳이 없어짐 ([FRONTEND.md](FRONTEND.md) 참고)
