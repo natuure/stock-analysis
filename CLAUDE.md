@@ -116,7 +116,7 @@ python 주도주분석.py [YYYY-MM-DD]  ← 뉴스분석.py 다음에 실행(수
 | 배포 구조, 폴더/파일 구조, MongoDB 스키마, API 엔드포인트, 환경변수 확인 | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | `뉴스분석.py`/`저장분석.py`/`주간분석.py`/`종목분석.py`/`주도주분석.py` 사용법, FDR·토스·DART 데이터 수집 로직, vol/rate/indices/weekly_indices 데이터 구조, 캐시 버전(`CACHE_VERSION`) 규칙 | [DATA_PIPELINE.md](DATA_PIPELINE.md) |
 | 화면/컴포넌트 구성(Tables·Analysis·StockChartPanel·IndexSummary·StockAnalysis·CompanyOverviewView), 디자인 토큰, 반응형 규칙 | [FRONTEND.md](FRONTEND.md) |
-| 로컬 빌드·개발 환경 (Google Drive npm 이슈 우회) | [DEV.md](DEV.md) |
+| 로컬 빌드·개발 환경 | [DEV.md](DEV.md) |
 | 과거에 제거되거나 대체된 기능 이력 | [HISTORY.md](HISTORY.md) |
 | Naver 뉴스 검색 쿼리 패턴 | [AI검색.md](AI검색.md) |
 
@@ -148,7 +148,6 @@ python 주도주분석.py [YYYY-MM-DD]  ← 뉴스분석.py 다음에 실행(수
   안 보이면 KIS 키/MongoDB 연결 문제로 그 실행에서 보강이 통째로 실패해 `vol`/`rate`를
   저장하지 않은 경우일 수 있음 — 스크립트 실행 로그의 "[경고] KIS 보강 실패" 메시지 확인
   ([DATA_PIPELINE.md](DATA_PIPELINE.md)).
-- **로컬에서 `npm run dev`/`npm run build`가 이상하게 실패함** → [DEV.md](DEV.md)의 Google Drive 우회 방법 사용.
 - **`종목분석.py`가 "종목 분석" 탭을 채워주는 건가?** → 2026-06-25부터 그렇다(자동 연동 완료).
   "종목 분석" 탭은 기업개요·재무상태표·손익계산서·현금흐름표 4개 버튼으로 구성됐고, 기업개요·
   재무상태표·손익계산서 3개가 `종목분석.py` 출력 구조(DART 재무제표 + KIS 현재가)를 읽어 계산함
