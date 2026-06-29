@@ -48,10 +48,13 @@ LATEST_REPORT_PROBE_ORDER = [ANNUAL_REPORT, QUARTER_REPORTS[2], QUARTER_REPORTS[
 # 지배주주지분도 회사별로 '지배기업소유주지분'(공백 없음)/'지배기업 소유주지분'(공백)/
 # '지배기업의 소유주에게 귀속되는 자본' 셋 다 쓰인다 — 후보를 넉넉히 둬야 누락이 줄어든다.
 # 화신은 '당기순이익' 대신 '당기순손익'(이익 대신 손익 — 음수도 가능하다는 의미로 더 정확한
-# 표기, 직접 확인 2026-06-25)을 씀.
+# 표기, 직접 확인 2026-06-25)을 씀. 현대차는 IS/CF/CIS 모두에서 '연결' 접두어를 붙인
+# '연결당기순이익'/'연결분기순이익'/'연결반기순이익'만 쓰고 접두어 없는 표기는 전혀 안 씀
+# (2025년 사업보고서·2026년 1분기보고서·2025년 반기보고서에서 직접 확인, 2026-06-29 —
+# PER이 Infinity로 나오는 버그로 발견).
 NET_INCOME_NAMES = [
     '당기순이익', '당기순이익(손실)', '분기순이익', '분기순이익(손실)', '반기순이익', '반기순이익(손실)',
-    '당기순손익',
+    '당기순손익', '연결당기순이익', '연결분기순이익', '연결반기순이익',
 ]
 # '지배기업 소유주지분'(공백 있음)은 재무상태표(BS) 외에 포괄손익계산서(CIS)의 총포괄손익
 # 배분액 항목으로도 쓰여서, extract_account() 호출 시 sj_div='BS'로 한정해야 함(노바렉스에서
@@ -148,6 +151,17 @@ def load_corp_codes():
     return mapping
 
 
+# 거래소 약식 종목명이 DART 정식명과 전혀 안 겹쳐 부분일치 자체가 불가능하고, 하필 무관한
+# 다른 회사명의 부분문자열이기도 한 경우(직접 확인, 2026-06-29: '현대차' 입력 → 부분일치가
+# '현대자동차'는 후보로 못 잡고('현대차'가 '현대자동차'의 연속된 부분문자열이 아님 — 현-대-
+# 자-동-차) 엉뚱한 '현대차증권'(001500, '현대차'를 그대로 포함)에 매칭돼 그 회사 재무데이터가
+# "현대차"라는 이름으로 잘못 저장되는 사고가 있었음 — sk하이닉스/이닉스 사고와 같은 패턴이지만
+# 대소문자 일치로는 못 막음, 둘 다 정상적인 한글 표기라서). 부분일치보다 먼저 확인.
+CORP_NAME_ALIASES = {
+    '현대차': '현대자동차',
+}
+
+
 def find_corp_code(name, corp_map):
     if name in corp_map:
         return corp_map[name]
@@ -159,6 +173,9 @@ def find_corp_code(name, corp_map):
     for k, v in corp_map.items():
         if k.lower() == name_lower:
             return v
+    alias = CORP_NAME_ALIASES.get(name)
+    if alias and alias in corp_map:
+        return corp_map[alias]
     candidates = [(k, v) for k, v in corp_map.items() if name_lower in k.lower() or k.lower() in name_lower]
     if not candidates:
         return None
@@ -265,7 +282,14 @@ def extract_eps(items, sj_div=None):
     # 우선주가 있는 회사(대한항공)는 분기보고서에서 보통주·우선주 EPS를 따로 보고하기도 함 —
     # 일반 투자자가 보는 보통주 기준만 쓴다(직접 확인, 2026-06-25). 우선주 EPS는 후보에 일부러
     # 안 넣음 — 같은 목록에 두면 API 응답에서 우선주 쪽이 먼저 나와 잘못 매칭될 위험이 있음.
-    return extract_account(items, ['보통주기본주당이익'], sj_div=sj_div)
+    # 현대차는 공백·'(손실)' 접미사 표기가 EPS_NAMES와 같은 패턴으로 갈린다 — 2025년
+    # 사업보고서는 '보통주기본주당이익(손실)', 2026년 1분기보고서는 '보통주 기본주당이익'
+    # (공백 있음, '손실' 접미사 없음)을 씀(직접 확인, 2026-06-29).
+    return extract_account(
+        items,
+        ['보통주기본주당이익', '보통주 기본주당이익', '보통주기본주당이익(손실)', '보통주 기본주당이익(손실)'],
+        sj_div=sj_div,
+    )
 
 
 def extract_account_like(items, keyword, sj_div='BS'):

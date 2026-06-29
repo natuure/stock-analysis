@@ -5,7 +5,7 @@ const DART_BASE = 'https://opendart.fss.or.kr/api';
 
 const NET_INCOME_NAMES = [
   '당기순이익', '당기순이익(손실)', '분기순이익', '분기순이익(손실)', '반기순이익', '반기순이익(손실)',
-  '당기순손익',
+  '당기순손익', '연결당기순이익', '연결분기순이익', '연결반기순이익',
 ];
 // sj_div='BS'로 한정해야 함 — 노바렉스에서 직접 확인한 CIS 충돌 버그(종목분석.py 55~60행 참고).
 const PARENT_EQUITY_NAMES = [
@@ -51,12 +51,21 @@ async function loadCorpCodeMap(db) {
 // "sk하이닉스"가 무관한 짧은 회사명에 잘못 매칭되는 버그가 있었음(직접 확인된 사례).
 // Python과 다른 점: 매칭된 회사의 정식 명칭(매칭된 키)도 함께 반환한다(name 필드 추가) —
 // 즉석분석 결과를 저장할 때 사용자가 입력한 표기 그대로가 아니라 DART 정식 명칭을 쓰기 위함.
+// 거래소 약식 종목명이 DART 정식명과 전혀 안 겹쳐 부분일치가 불가능하고, 하필 무관한 다른
+// 회사명의 부분문자열이기도 한 경우(직접 확인, 2026-06-29: '현대차' → 부분일치가 '현대자동차'는
+// 후보로 못 잡고 엉뚱한 '현대차증권'에 매칭됨, 종목분석.py의 CORP_NAME_ALIASES와 동일한 사고).
+const CORP_NAME_ALIASES = {
+  '현대차': '현대자동차',
+};
+
 function findCorpCode(name, corpMap) {
   if (corpMap[name]) return { name, ...corpMap[name] };
   const nameLower = name.toLowerCase();
   for (const key of Object.keys(corpMap)) {
     if (key.toLowerCase() === nameLower) return { name: key, ...corpMap[key] };
   }
+  const alias = CORP_NAME_ALIASES[name];
+  if (alias && corpMap[alias]) return { name: alias, ...corpMap[alias] };
   const candidates = Object.keys(corpMap).filter(
     k => nameLower.includes(k.toLowerCase()) || k.toLowerCase().includes(nameLower)
   );
@@ -126,7 +135,11 @@ function extractEps(items, sjDiv = null) {
     const discontinued = extractAccount(items, ['중단영업 기본주당순이익'], sjDiv) || 0;
     return continuing + discontinued;
   }
-  return extractAccount(items, ['보통주기본주당이익'], sjDiv);
+  return extractAccount(
+    items,
+    ['보통주기본주당이익', '보통주 기본주당이익', '보통주기본주당이익(손실)', '보통주 기본주당이익(손실)'],
+    sjDiv,
+  );
 }
 
 // account_nm에 keyword가 포함된 재무상태표(BS) 항목들의 당기 금액 합계(차입금처럼
