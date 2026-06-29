@@ -482,9 +482,12 @@ tbody tr.chart-row td { text-align: left; white-space: normal; padding: 0; }
   position: sticky; left: 0; background: var(--c-bg);
   color: var(--c-muted); font-weight: 700;
 }
-.cat-trend-up   { color: var(--c-up); font-weight: 700; }   /* 전날보다 순위 상승 */
-.cat-trend-down { color: var(--c-down); font-weight: 700; } /* 전날보다 순위 하락 */
-.cat-trend-new  { background: rgba(3, 178, 108, 0.15); font-weight: 700; } /* --c-success 톤, TOP5 신규 진입 */
+/* .cat-trend-table td보다 명시도가 같거나 낮으면 그 규칙의 color가 항상 덮어써서 (위 줄
+   자체엔 font-weight가 없어 굵게는 보이는데 색만 안 바뀌는 버그였음) td를 같이 셀렉터에 넣어
+   명시도를 올림 */
+.cat-trend-table td.cat-trend-up   { color: var(--c-up); font-weight: 700; }   /* 전날보다 순위 상승 */
+.cat-trend-table td.cat-trend-down { color: var(--c-down); font-weight: 700; } /* 전날보다 순위 하락 */
+.cat-trend-table td.cat-trend-new  { background: rgba(3, 178, 108, 0.15); font-weight: 700; } /* --c-success 톤, TOP5 신규 진입 */
 
 /* ── 거래대금·등락률 분석 — 카테고리 비중 도넛 차트(스와이프 캐러셀) ───────── */
 .pie-carousel-block {
