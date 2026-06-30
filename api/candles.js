@@ -25,12 +25,17 @@ function ymd(dateStr, offsetDays) {
   return `${dt.getUTCFullYear()}${String(dt.getUTCMonth() + 1).padStart(2, '0')}${String(dt.getUTCDate()).padStart(2, '0')}`;
 }
 
-async function fetchKisCandles(token, code, dateStr, period) {
+async function fetchKisCandles(token, code, dateStr, period, fromStr) {
   const { count, lookbackDays } = PERIOD_CONFIG[period];
+  // fromStr(YYYY-MM-DD)이 있으면(차트분석 탭 — 추적 리스트 종목의 "리스트 포함 이후 누적" 조회)
+  // 고정 lookbackDays/count 대신 그 날짜부터 전체를 1회 요청한다. KIS는 1회 호출당 최대 100개
+  // 캔들만 반환하므로(DATA_PIPELINE.md 참고), 추적 기간이 100거래일을 넘으면 가장 최근 데이터만
+  // 받아와 앞부분이 잘릴 수 있음 — 알려진 한계, 다회 호출 페이지네이션은 이번 범위 밖.
+  const startStr = fromStr ? fromStr.replace(/-/g, '') : ymd(dateStr, -lookbackDays);
   const url = new URL(`${KIS_BASE}/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice`);
   url.searchParams.set('FID_COND_MRKT_DIV_CODE', 'J');
   url.searchParams.set('FID_INPUT_ISCD', code);
-  url.searchParams.set('FID_INPUT_DATE_1', ymd(dateStr, -lookbackDays));
+  url.searchParams.set('FID_INPUT_DATE_1', startStr);
   url.searchParams.set('FID_INPUT_DATE_2', ymd(dateStr, 0));
   url.searchParams.set('FID_PERIOD_DIV_CODE', period);
   url.searchParams.set('FID_ORG_ADJ_PRC', '0');
@@ -59,7 +64,7 @@ async function fetchKisCandles(token, code, dateStr, period) {
       volume: row.acml_vol,
     }))
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
-    .slice(0, count);
+    .slice(0, fromStr ? undefined : count);  // from 지정 시 그 구간 전체 반환(KIS 1회 100개 한도 내)
 }
 
 module.exports = async (req, res) => {
@@ -69,7 +74,7 @@ module.exports = async (req, res) => {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'GET') return res.status(405).end();
 
-  const { symbol, date } = req.query;
+  const { symbol, date, from } = req.query;
   if (!symbol || !date) return res.status(400).json({ error: 'symbol, date 파라미터 필요' });
   const period = PERIOD_CONFIG[req.query.period] ? req.query.period : 'D';
 
@@ -77,7 +82,7 @@ module.exports = async (req, res) => {
 
   try {
     const token = await getKisToken(db);
-    const candles = await fetchKisCandles(token, symbol, date, period);
+    const candles = await fetchKisCandles(token, symbol, date, period, from);
     if (candles.length) return res.json({ candles });
   } catch (e) {
     console.error('[KIS 캔들 조회 실패]', e.message);

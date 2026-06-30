@@ -25,9 +25,9 @@ function sma(values, period) {
 const BAR_UP = '#000000';   // 양봉
 const BAR_DOWN = '#f04452'; // 음봉
 
-function CandleChart({ candles, maLines }) {
+function CandleChart({ candles, maLines, visibleCount = VISIBLE_COUNT }) {
   const full = [...candles].reverse(); // 오래된 → 최신 순 (MA 계산용 선행 데이터 포함)
-  const visible = full.slice(-VISIBLE_COUNT);
+  const visible = full.slice(-visibleCount);
   const offset = full.length - visible.length;
   const closes = full.map(c => parseFloat(c.closePrice));
   const maSeries = maLines.map(line => ({ ...line, values: sma(closes, line.period).slice(offset) }));
@@ -83,7 +83,7 @@ function CandleChart({ candles, maLines }) {
   );
 }
 
-export default function StockChartPanel({ code, dateISO, maxWidth }) {
+export default function StockChartPanel({ code, dateISO, maxWidth, from, extraMaLines }) {
   const [candles, setCandles] = useState(null);
   const [error,   setError]   = useState(null);
   const [period,  setPeriod]  = useState('D');
@@ -92,16 +92,22 @@ export default function StockChartPanel({ code, dateISO, maxWidth }) {
     if (!code) return;
     setCandles(null);
     setError(null);
-    fetch(`/api/candles?symbol=${code}&date=${dateISO}&period=${period}`)
+    const fromQuery = from ? `&from=${from}` : '';
+    fetch(`/api/candles?symbol=${code}&date=${dateISO}&period=${period}${fromQuery}`)
       .then(r => r.json())
       .then(data => {
         if (data.error) throw new Error(data.error);
         setCandles(data.candles || []);
       })
       .catch(e => setError(e.message));
-  }, [code, dateISO, period]);
+  }, [code, dateISO, period, from]);
 
-  const activeTab = PERIOD_TABS.find(t => t.key === period);
+  const baseTab = PERIOD_TABS.find(t => t.key === period);
+  // extraMaLines(50/150/200일선 등)는 일봉에서만, "포함 이후 누적" 차트(from 지정)에만 덧붙임
+  // — 추적 종목의 이동평균 정배열 배지와 시각적으로 대응되도록(차트분석 탭 전용).
+  const activeTab = period === 'D' && extraMaLines
+    ? { ...baseTab, maLines: [...baseTab.maLines, ...extraMaLines] }
+    : baseTab;
 
   const last = candles && candles[0];
   const prevClose = candles && candles[1] ? parseFloat(candles[1].closePrice) : null;
@@ -136,7 +142,7 @@ export default function StockChartPanel({ code, dateISO, maxWidth }) {
               </span>
             ))}
           </div>
-          <CandleChart candles={candles} maLines={activeTab.maLines} />
+          <CandleChart candles={candles} maLines={activeTab.maLines} visibleCount={from ? candles.length : VISIBLE_COUNT} />
         </>
       )}
     </div>
