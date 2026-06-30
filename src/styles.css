@@ -304,6 +304,12 @@ tbody tr.chart-row td { text-align: left; white-space: normal; padding: 0; }
 }
 .ma-align-badge.aligned { background: rgba(240, 68, 82, 0.1); color: var(--c-up); }
 
+/* 종목명이 1열(rank 없음)이라 기본 tbody td:first-child(가운데정렬·회색·작은 글씨)가 적용되는 걸
+   되돌림 — Tables.jsx의 td:nth-child(2)(종목명) 스타일과 동일하게 왼쪽정렬·검정·굵게 표시 */
+.chart-tracking-table tbody td:first-child {
+  text-align: left; color: var(--c-heading); font-weight: 600; font-size: 13px;
+}
+
 /* ── Mobile tabs ──────────────────────────────────────────── */
 .seg-tabs { display: none; background: var(--c-surface); border-radius: var(--r-md); padding: 4px; margin-bottom: 12px; }
 .seg-btn  {
