@@ -3,11 +3,10 @@
 ## 화면 구성 (현재, 위에서 아래 순서)
 
 ### 상단 탭 (App.jsx의 `topTab` 상태, TopTabs.jsx)
-- `app-top`(Header+TopTabs를 함께 감싸는 sticky 영역) 안에 4개 탭
+- `app-top`(Header+TopTabs를 함께 감싸는 sticky 영역) 안에 3개 탭
   1. **주식 거래대금·등락률 분석** — 기존 화면 전체(Calendar~Tables)
   2. **종목 분석** — `StockAnalysis.jsx`, 아래 절 참고
-  3. **차트분석**(2026-06-30 도입) — `ChartAnalysis.jsx`, 아래 절 참고
-  4. **조건 검색** — 내용 미정, "준비 중" placeholder만 표시
+  3. **조건 검색** — 내용 미정, "준비 중" placeholder만 표시
 - 탭 전환은 클라이언트 상태로만 처리 (URL 라우팅 없음, react-router 미사용)
 
 ### StockAnalysis.jsx (2026-06-24 도입, 2026-06-25 종목 검색 + 손익계산서·재무상태표 연동 추가)
@@ -108,35 +107,6 @@
   슬라이더로 조절(`DCF_GROWTH_RATE`/`DCF_TERMINAL_GROWTH`/`DCF_YEARS` 상수). 실제 CAPEX·
   순운전자본 변동은 반영하지 않은 근사치 — WACC 슬라이더 최솟값(4%)은 영구성장률(2%)보다
   항상 높게 둬서 0으로 나누는 걸 방지.
-
-### ChartAnalysis.jsx (2026-06-30 도입, "차트분석" 탭)
-- 등락률 상위 50에 한 번이라도 오른 종목을 30거래일 동안 추적하는 표 — `차트분석.py`가
-  매일(뉴스분석.py 다음) 채우는 MongoDB `tracked_stocks`를 마운트 시 `/api/getTrackedStocks`로
-  받아 렌더링하는 순수 표시 컴포넌트(자체 분석 로직 없음, 추가/제외/45% 하락/정배열 판정은
-  전부 스크립트가 미리 계산해둔 값을 그대로 보여줌 — [DATA_PIPELINE.md](DATA_PIPELINE.md)의
-  "차트분석.py" 절 참고).
-- 표 컬럼: 종목명 | 시장(코스피/코스닥) | 추가일(`firstAddedDate`) | 현재가 | 기준가
-  (`referenceClose`) 대비 등락 | 정배열 배지 | 지수 대비 누적 변동률. 추적 중인 종목이
-  없으면 "현재 추적 중인 종목이 없습니다" 안내만 표시.
-- **7개 열 모두 헤더 클릭 정렬**(2026-07-01 추가) — `Tables.jsx`의 `SortIcon`/정렬 토글
-  패턴을 그대로 복사. 정배열·현재가·기준가 대비처럼 `ma`가 없는 행(아직 이동평균 미계산)은
-  `null`을 `-Infinity`로 취급해 정렬 시 항상 맨 아래로 밀려남(Tables.jsx와 동일 관례).
-- **종목명 열은 `tbody td:first-child`의 기본(가운데정렬·회색·작은 글씨, 원래 "순위" 열
-  전용 스타일) 대신 `.chart-tracking-table tbody td:first-child`로 왼쪽정렬·검정(`--c-heading`)
-  ·굵게 오버라이드**(2026-07-01) — 이 표는 순위 열이 없어 종목명이 1열인데, 전역 CSS가
-  순위 열 스타일을 그대로 적용해 종목명이 회색으로 보이던 문제를 수정.
-- **정배열 배지**(`.ma-align-badge`, 정배열이면 `.aligned` 추가 — 빨간 배경/글자, 국내 증시
-  관행대로 상승 추세를 빨강으로 표시하는 기존 `--c-up` 토큰 재사용)는 `ma.aligned`(현재가 >
-  50일선 > 150일선 > 200일선)를 그대로 보여줌. 이동평균 데이터가 아직 없는 종목(`ma: null`,
-  예: 오늘 막 추가됐는데 시세 조회가 일시적으로 실패한 경우)은 `-`로 표시.
-- **행 클릭 시 인라인 차트 펼침** — `Tables.jsx`의 `expandedCode` state + `useCardWidth` 훅과
-  완전히 동일한 패턴을 이 파일 안에 그대로 복사해 둠(컬럼 구성이 달라 `Tables.jsx`를 직접
-  import하기보다 패턴만 차용). 펼친 차트는 `StockChartPanel`을 그대로 쓰되 `from={그
-  종목의 firstAddedDate}`와 `extraMaLines`(50/150/200일선, 정배열 배지와 시각적으로 대응)를
-  추가로 넘겨서 "포함 이후 누적" 차트가 그려지게 함 — 아래 StockChartPanel.jsx 절의 확장
-  내용 참고.
-- "지수 대비 누적 변동률"은 `api/getTrackedStocks.js`가 요청 시점에 계산해서 내려준 값을
-  그대로 표시(이 컴포넌트는 직접 계산하지 않음).
 
 ### Header.jsx
 - 제목 + 현재 보고 있는 날짜 표시 (이제 `.app-top` 안에서 TopTabs와 함께 sticky)
@@ -385,13 +355,6 @@ meet`)으로 둔다는 점**(`TrendChart`는 막대/꺾은선이라 `none`으로
   거래량 막대는 선형 유지
 - 차트 아래 시가·고가·저가·거래량 텍스트 요약은 제거됨 — 대신 캔들 바로 아래에 일별 거래량
   막대를 같은 x축으로 정렬해 표시(양봉 검정/음봉 빨강, 캔들과 동일 기준)
-- **선택적 `from`/`extraMaLines` prop**(2026-06-30 추가, "차트분석" 탭 전용 — 기존 `Tables.jsx`
-  호출은 둘 다 안 넘기므로 동작 변화 없음): `from`(YYYY-MM-DD)이 있으면 `/api/candles`에
-  `&from=`을 같이 보내 고정 60개 표시 구간(`VISIBLE_COUNT`) 대신 **받은 캔들 전체**를 표시
-  구간으로 씀(`CandleChart`의 `visibleCount` prop으로 전달) — 추적 종목의 "포함 이후 누적"
-  차트라 처음엔 어차피 60개보다 짧음. `extraMaLines`(50/150/200일선 등)는 일봉(`period==='D'`)
-  탭에만, 기존 `PERIOD_TABS`의 5일/20일선 뒤에 그대로 이어붙여 그림(`ChartAnalysis.jsx`가
-  정배열 배지와 같은 기간으로 넘김).
 
 ---
 
