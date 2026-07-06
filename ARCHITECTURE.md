@@ -12,13 +12,12 @@ src/                                 api/getData.js                  MongoDB Atl
     Tables, Analysis                 api/analyzeStocks.js               _id = "YYYY-MM-DD"
     StockChartPanel                    Claude API 프록시 (미사용)       candles 컬렉션 (토스 캔들 캐시·폴백용)
     StockAnalysis                     api/candles.js                     _id = "종목코드_YYYY-MM-DD"
-    CompanyOverviewView                 KIS Open API 직접 호출(실시간)  kis_token 컬렉션 (KIS 접근토큰 캐시)
-  utils.js                              → 실패 시에만 candles 캐시 폴백   _id = "token"
-  styles.css                          api/getCompanyOverview.js        weekly_indices 컬렉션
-                                         company_analysis 조회             _id = "YYYY-W##"
-                                         (목록/종목코드별 단건) +        company_analysis 컬렉션
-                                         KIS로 현재가 실시간 덮어씀         _id = "종목코드"
-                                         (실패 시에만 저장된 quote 폴백)
+    EtfRankTable                          KIS Open API 직접 호출(실시간)  kis_token 컬렉션 (KIS 접근토큰 캐시)
+    CompanyOverviewView               api/getCompanyOverview.js          _id = "token"
+  utils.js                              company_analysis 조회        weekly_indices 컬렉션
+  styles.css                             (목록/종목코드별 단건) +        _id = "YYYY-W##" (etfRank 필드 포함)
+                                         KIS로 현재가 실시간 덮어씀     company_analysis 컬렉션
+                                         (실패 시에만 저장된 quote 폴백)   _id = "종목코드"
                                      api/analyzeCompany.js            dart_corp_codes 컬렉션
                                        DART+KIS 즉석 분석                _id = "map"
                                        (Claude 미사용) → company_analysis
@@ -35,7 +34,9 @@ Python (로컬 실행, 고정 IP)
   뉴스분석.py   ← FinanceDataReader 수집 + 토스 캔들 캐싱(폴백용) + Naver 뉴스 수집 + stock_data 저장
   저장분석.py   ← ai_analysis 저장
   주간분석.py   ← 코스피/코스닥 주간 변동률 + 주간 거래대금/등락률 상위 50(뉴스분석.py 임포트해
-                  KIS 통합 보강 재사용, 2026-06-27) 계산 + weekly_indices 저장 (메인 흐름과 독립)
+                  KIS 통합 보강 재사용, 2026-06-27) + 주간 ETF 등락률 상위 15(weekly_indices.etfRank,
+                  원래 별도 ETF분석.py였던 랭킹 계산 로직을 흡수, 2026-07-06) 계산 + weekly_indices
+                  저장 (메인 흐름과 독립)
   종목분석.py   ← DART로 단일 종목 재무제표 수집 + MongoDB company_analysis 저장
                   (웹앱 "종목 분석" 탭 검색용, DATA_PIPELINE.md 참고 — 2026-06-27부터는
                   수동 실행 없이도 웹에서 미분석 종목을 즉석 분석 가능, api/analyzeCompany.js)
@@ -87,11 +88,15 @@ Python (로컬 실행, 고정 IP)
 │       ├── StockChartPanel.jsx  # 종목 클릭 시 표 행 아래에 인라인으로 펼치는 일봉/주봉 캔들 차트 패널(모달 아님)
 │       ├── Analysis.jsx     # ThemeTable + ThemeCategoryTrend(최근 14일 카테고리 추이) + AiPanels + N파일
 │       ├── StockAnalysis.jsx  # "종목 분석" 탭 — 종목명 검색(자동완성)창 + 기업개요/재무상태표/손익계산서/현금흐름표 4버튼
+│       ├── EtfRankTable.jsx   # 주간뷰(카테고리 비중 도넛 ~ 주간 종목 데이터 표 사이)에 삽입되는
+│       │                       ETF 등락률 상위 15 표 — 별도 탭이 아니라 weekVolRate.etfRank를 그대로 받아
+│       │                       렌더링만 함(2026-07-04 도입, 2026-07-06 별도 탭에서 이 위치로 이동)
 │       ├── CompanyOverviewView.jsx  # 기업개요 — PER/PBR/ROE/EV·EBITDA + 적정주가 슬라이더 4종 (data prop으로 받음)
 │       └── TrendChart.jsx   # 의존성 없는 SVG 추이 차트(막대/꺾은선), StockAnalysis.jsx·Analysis.jsx 공용
 ├── 뉴스분석.py              # FinanceDataReader 수집 + Naver 뉴스 + stock_data 저장
 ├── 저장분석.py              # ai_analysis MongoDB 저장
-├── 주간분석.py              # 코스피/코스닥 주간 변동률 + 주간 거래대금/등락률 상위 50 → weekly_indices 저장
+├── 주간분석.py              # 코스피/코스닥 주간 변동률 + 주간 거래대금/등락률 상위 50 + 주간 ETF 등락률
+│                             상위 15(etfRank, 2026-07-06부터 흡수) → weekly_indices 저장
 ├── 종목분석.py              # DART로 단일 종목 재무제표 수집 → 종목분석결과/*.json (gitignore) + MongoDB company_analysis 저장
 │                             (analyze_one()은 주도주분석.py가 일괄 호출용으로 재사용, 2026-06-27)
 ├── 주도주분석.py            # 그날 거래대금·등락률 상위 종목(최대 100개, 중복 제거)을 종목분석.py로
@@ -120,7 +125,7 @@ Python (로컬 실행, 고정 IP)
 | `ai_analysis` | AI 분석 결과 | `{ _id: "YYYY-MM-DD", analysis: { 테마:[...], 거래대금:[...], 등락률:[...] } }` — `테마` 배열 각 항목에 2026-06-25부터 `카테고리`(고정 13개 값 중 하나, 일자 간 추이 집계용) 필드 추가, [DATA_PIPELINE.md](DATA_PIPELINE.md) 참고 |
 | `candles` | 종목별 토스 일봉 캔들 캐시 (KIS 실패 시 폴백용) | `{ _id: "종목코드_YYYY-MM-DD", candles: [...] }` (해당일 거래대금/등락률 상위 종목만) |
 | `kis_token` | KIS 접근토큰 캐시 (1분당 1회 발급 제한 대응) | `{ _id: "token", accessToken, expiresAt }` 단일 문서 |
-| `weekly_indices` | 주간 코스피/코스닥 변동률 + 주간 거래대금/등락률 상위 50(주간분석.py가 채움, vol/rate/lastTradingDate는 2026-06-27 추가라 그 이전 주차에는 없을 수 있음) | `{ _id: "YYYY-W##", kospi: {...}, kosdaq: {...}, vol: [...50], rate: [...50], lastTradingDate: "YYYY-MM-DD" }` |
+| `weekly_indices` | 주간 코스피/코스닥 변동률 + 주간 거래대금/등락률 상위 50(주간분석.py가 채움, vol/rate/lastTradingDate는 2026-06-27 추가라 그 이전 주차에는 없을 수 있음) + 주간 ETF 등락률 상위 15(`etfRank`, 2026-07-04 도입, 2026-07-06부터 `주간분석.py`가 직접 채움 — 그 이전 주차에는 없을 수 있음) | `{ _id: "YYYY-W##", kospi: {...}, kosdaq: {...}, vol: [...50], rate: [...50], lastTradingDate: "YYYY-MM-DD", etfRank: [...15] }` |
 | `company_analysis` | 종목별 DART 재무제표 + KIS 현재가 (종목분석.py 수동 실행, `주도주분석.py` 일괄 실행, **또는** `api/analyzeCompany.js` 즉석분석이 채움, "종목 분석" 탭용). **`quote`는 채워진 시점에 박힌 값이라 폴백 전용** — 실제 화면에는 `api/getCompanyOverview.js`가 조회 시점에 KIS로 새로 받아온 현재가가 표시됨(2026-06-25) | `{ _id: "종목코드", name, date, corp_code, quote, annual_financials, quarterly_financials, latest_report }` |
 | `dart_corp_codes` | DART 상장기업 corp_code 매핑(`기업코드동기화.py`가 로컬 `_dart_corp_codes.json`을 1회 옮김, `api/analyzeCompany.js`가 종목명→corp_code 조회에 사용 — Vercel엔 영속 파일시스템이 없어 로컬 JSON 캐싱 패턴을 못 씀, 2026-06-27) | `{ _id: "map", data: { "회사명": { corp_code, stock_code }, ... } }` 단일 문서 |
 

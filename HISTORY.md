@@ -119,3 +119,15 @@
   보이는 문제가 있어 도입. 하지만 결국 사용자가 영업이익률·ROE·주당순이익 세 지표 모두
   독립된 단일 계열 막대 차트로 되돌리는 쪽을 선택해, 같은 날 보조 y축 지원 자체를 다시
   제거함 — 더 쓰는 곳이 없어짐 ([FRONTEND.md](FRONTEND.md) 참고)
+- **"ETF 분석" 탭의 종목명 → 구성 ETF 검색 기능** (`EtfAnalysis.jsx`의 검색 섹션, `api/getEtfConstituents.js`,
+  MongoDB `etf_constituents` 컬렉션, `ETF분석.py`의 `refresh_etf_constituents()`, `kis_etf_test.py`
+  전부 삭제, 2026-07-06): 2026-07-04 도입 당시 KIS ETF 구성종목 API(`inquire-component-stock-price`)가
+  VPN 차단으로 아예 안 됐고, 2026-07-05 VPN 해제 후에도 같은 ETF 코드를 반복 호출하면 응답이
+  0건/30건으로 들쭉날쭉해 "평일 장중 재확인 후 전체 배치 실행"을 미뤄둔 상태였다 — 결국
+  `etf_constituents` 컬렉션은 한 번도 채워진 적 없이 삭제됨. **랭킹 표(주간 ETF 등락률 상위 15)는
+  삭제하지 않고 유지** — KIS를 쓰지 않고 FDR만으로 계산해 이 불안정성과 무관했기 때문. 다만 별도
+  "ETF 분석" 탭 자체는 없애고, 그 표를 메인 화면 주간뷰의 카테고리 비중 도넛과 주간 종목 데이터
+  표 사이로 옮김(`EtfRankTable.jsx` 신설). 랭킹 계산 로직(`etf_weekly_rank` 등)도 별도 `ETF분석.py`
+  스크립트에서 `주간분석.py`로 흡수해, `python 주간분석.py` 한 번으로 vol/rate/etfRank가 모두
+  채워지게 함 ([DATA_PIPELINE.md](DATA_PIPELINE.md), [ARCHITECTURE.md](ARCHITECTURE.md),
+  [FEATURES.md](FEATURES.md) 참고)

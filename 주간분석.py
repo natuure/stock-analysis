@@ -1,15 +1,23 @@
 """
-코스피·코스닥 이번 주(월~금) 변동률 + 거래대금·등락률 상위 50 종목 계산 + MongoDB 저장 스크립트
+코스피·코스닥 이번 주(월~금) 변동률 + 거래대금·등락률 상위 50 종목 + ETF 등락률 상위 15 계산
++ MongoDB 저장 스크립트
 사용법: python 주간분석.py
        (아무 때나 실행 가능. 가장 최근 1주일치만 다시 계산해 weekly_indices에 upsert한다)
 결과:
   - MongoDB weekly_indices 컬렉션에 해당 주차 1건
-    {kospi, kosdaq: {close, change, changeRate}, vol, rate: [...50개], lastTradingDate} 저장
+    {kospi, kosdaq: {close, change, changeRate}, vol, rate: [...50개], lastTradingDate,
+     etfRank: [...15개]} 저장
     (vol/rate는 뉴스분석.py와 동일하게 KIS 통합(KRX+NXT) 보강을 거침, 2026-06-27 추가)
     (vol/rate 각 항목에 그 주 일간 ai_analysis에서 찾은 카테고리도 채움 — 매칭 안 되는
     종목은 필드 자체가 없음, 웹앱 "주간 거래대금·등락률 카테고리 비중" 도넛에 쓰임,
     2026-06-27 추가)
-  - 웹앱 달력의 그 주 주차(W##) 칸이 이 값을 읽어 표시
+    (etfRank는 최소 순자산(AUM) 100억원 이상 ETF의 그 주 등락률 상위 15개 — 원래
+    별도 스크립트였던 ETF분석.py의 랭킹 계산 로직을 여기로 흡수함, 2026-07-06. ETF분석.py가
+    하던 구성종목(holdings) 역색인 갱신 기능은 웹앱 "ETF 분석" 탭 자체를 접으면서 함께
+    삭제함 — KIS ETF 구성종목 API 응답이 불안정했던 문제([HISTORY.md](HISTORY.md) 참고)
+    라기보다 "구성종목 검색" 기능 자체를 유지할 필요가 없다고 판단해 정리한 것)
+  - 웹앱 달력의 그 주 주차(W##) 칸이 kospi/kosdaq을 읽어 표시하고, 그 주차를 클릭하면
+    카테고리 비중 도넛과 주간 종목 데이터 표 사이에 etfRank 표도 함께 보여줌
 """
 
 import os
@@ -319,6 +327,110 @@ def get_previous_week_vol_ranks(week_key_str):
     return {s['code']: s['rank'] for s in prev['vol']}
 
 
+# ── 주간 ETF 등락률 상위 15 (원래 별도 ETF분석.py였던 랭킹 계산 로직을 흡수, 2026-07-06) ──
+# ETF분석.py가 하던 두 가지 일(랭킹 계산 + KIS로 구성종목 역색인 갱신) 중 랭킹 계산만 여기로
+# 옮기고, 구성종목 갱신은 "ETF 분석" 탭의 구성종목 검색 기능 자체를 없애면서 함께 삭제했다
+# (etf_constituents 컬렉션도 더 이상 채우지 않음). resolve_target_week()을 그대로 재사용해
+# vol/rate와 같은 주(weekly_indices._id)에 합쳐지도록 한다.
+
+ETF_MIN_MARKET_CAP = 100  # 최소 순자산(AUM) 100억원 — fdr.StockListing('ETF/KR')의 MarCap
+                          # 컬럼은 원 단위가 아니라 억원 단위로 내려온다(직접 확인, 2026-07-04 —
+                          # KODEX 200의 MarCap이 273942로 나오는데 이는 27.4조원에 해당).
+                          # 레버리지·테마 ETF의 반짝 변동성이 랭킹을 독점하지 않도록 하는 필터
+                          # (사용자 확정).
+
+
+def fetch_etf_universe():
+    """fdr.StockListing('ETF/KR')로 현재 상장된 ETF 전체 유니버스를 받아
+    {code, name, marCap} 리스트로 변환한다. marCap은 억원 단위(위 ETF_MIN_MARKET_CAP 설명
+    참고). 원본의 Category 컬럼은 1~7의 내부 분류 코드일 뿐 사람이 읽을 수 있는 이름이
+    아니라(직접 확인 — "KODEX 200"과 "TIGER 200"이 둘 다 1인 반면 "KODEX 레버리지"는 3,
+    매핑표를 찾지 못함) 사용하지 않는다."""
+    df = fdr.StockListing('ETF/KR')
+    result = []
+    for _, r in df.iterrows():
+        result.append({
+            'code': r['Symbol'],
+            'name': r['Name'],
+            'marCap': float(r['MarCap']),
+        })
+    return result
+
+
+def etf_weekly_change(code, week_start, week_end):
+    """해당 ETF의 그 주(week_start~week_end) 마지막 종가 vs 그 전 마지막 종가로 등락률을
+    계산한다. fetch_weekly_market_data()와 동일한 윈도잉(과거 10일 여유를 두고 조회해
+    주 시작 전 마지막 종가를 anchor로 삼음). 히스토리가 부족하면(신규 상장 등) None."""
+    try:
+        hist = fdr.DataReader(code, week_start - timedelta(days=10), week_end)
+    except Exception:
+        return None
+    if hist.empty:
+        return None
+    this_week = hist.loc[str(week_start):str(week_end)]
+    if this_week.empty:
+        return None
+    prior = hist.loc[:str(week_start - timedelta(days=1))]
+    if prior.empty:
+        return None
+    anchor_close = float(prior['Close'].iloc[-1])
+    last_close = float(this_week['Close'].iloc[-1])
+    if not anchor_close:
+        return None
+    change = last_close - anchor_close
+    return {
+        'price': last_close,
+        'change': change,
+        'changeRate': change / anchor_close * 100,
+    }
+
+
+def etf_weekly_rank(db, top=15):
+    resolved = resolve_target_week()
+    if resolved is None:
+        print('[경고] ETF 주간 랭킹을 계산할 거래일이 없어 건너뜁니다.')
+        return None
+    target_week, trading_dates = resolved
+    week_start, week_end = trading_dates[0], trading_dates[-1]
+
+    universe = fetch_etf_universe()
+    eligible = [e for e in universe if e['marCap'] and e['marCap'] >= ETF_MIN_MARKET_CAP]
+    print(f'ETF 유니버스 {len(universe)}개 중 최소 AUM(100억) 이상 {len(eligible)}개 대상으로 계산...')
+
+    ranked = []
+    for i, e in enumerate(eligible, start=1):
+        if i % 200 == 0:
+            print(f'  ETF 주간 등락률 계산 중... ({i}/{len(eligible)})')
+        change = etf_weekly_change(e['code'], week_start, week_end)
+        if change is None:
+            continue
+        ranked.append({**e, **change})
+
+    ranked.sort(key=lambda s: s['changeRate'], reverse=True)
+    top_ranked = ranked[:top]
+    for rank, s in enumerate(top_ranked, start=1):
+        s['rank'] = rank
+
+    etf_rank = [{
+        'rank': s['rank'],
+        'code': s['code'],
+        'name': s['name'],
+        'price': s['price'],
+        'change': s['change'],
+        'changeRate': s['changeRate'],
+        'marCap': s['marCap'],
+    } for s in top_ranked]
+
+    if db is not None:
+        db['weekly_indices'].update_one({'_id': target_week}, {'$set': {'etfRank': etf_rank}}, upsert=True)
+        print(f'MongoDB 저장 완료: weekly_indices/{target_week}.etfRank ({len(etf_rank)}개)')
+    else:
+        print('[경고] MONGODB_URI 없음 — ETF 랭킹 MongoDB 저장 건너뜀')
+
+    print(f'ETF 주간 등락률 상위 {len(etf_rank)}개 산출 완료 ({len(eligible)}개 후보 중 {len(ranked)}개 계산 성공)')
+    return target_week, etf_rank
+
+
 def save_to_mongodb(week, entry):
     if not MONGODB_URI:
         print('[경고] MONGODB_URI 없음 — MongoDB 저장 건너뜀')
@@ -387,6 +499,14 @@ def main():
             print('[경고] KIS 보강 실패 — 이번 실행에서는 주간 거래대금/등락률을 저장하지 않습니다.')
 
     save_to_mongodb(week, entry)
+
+    print('주간 ETF 등락률 상위 15 산출 중...')
+    etf_client = MongoClient(MONGODB_URI) if MONGODB_URI else None
+    etf_db = etf_client.get_default_database() if etf_client is not None else None
+    etf_weekly_rank(etf_db)
+    if etf_client is not None:
+        etf_client.close()
+
     print('웹앱 달력의 이번 주 주차(W##) 칸에 반영됩니다.')
 
 

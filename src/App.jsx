@@ -6,6 +6,7 @@ import IndexSummary from './components/IndexSummary';
 import Analysis, { CategoryPieCarousel } from './components/Analysis';
 import Tables from './components/Tables';
 import StockAnalysis from './components/StockAnalysis';
+import EtfRankTable from './components/EtfRankTable';
 import {
   dateToISO, CACHE_VERSION,
   saveAnalysisToStorage, loadAnalysisFromStorage,
@@ -173,8 +174,8 @@ export default function App() {
               if (valid) {
                 fetch(`/api/getData?week=${weekKey}`)
                   .then(r => r.json())
-                  .then(({ vol, rate }) => {
-                    if (vol && rate) setWeekVolRate({ vol, rate });
+                  .then(({ vol, rate, etfRank }) => {
+                    if (vol && rate) setWeekVolRate({ vol, rate, etfRank });
                   })
                   .catch(() => {});
               }
@@ -195,6 +196,11 @@ export default function App() {
                   등락률: toWeeklyAiItems(weekVolRate.rate),
                 }}
                 date={weekIdx?.lastTradingDate}
+              />
+              <EtfRankTable
+                etfRank={weekVolRate.etfRank}
+                week={weekSelected}
+                lastTradingDate={weekIdx?.lastTradingDate}
               />
               <h2 className="sec-title" style={{ marginTop: 36 }}>주간 종목 데이터</h2>
               <Tables
