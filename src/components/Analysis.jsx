@@ -283,7 +283,10 @@ export default function Analysis({ analysisExcel, aiAnalysis, themeTrend, vol, r
     <div>
       {hasTheme && <ThemeTable themes={aiAnalysis.테마} />}
       <CategoryPieCarousel vol={vol} rate={rate} aiAnalysis={aiAnalysis} date={date} />
-      <CategoryRankTrend themeTrend={themeTrend} />
+      {/* 이 표는 선택한 날짜와 무관하게 "최근 영업일(현재 기준)" 추이를 보여주므로, 카테고리
+          분류가 없는 날짜(1월 1일부터 백필한 거래대금/등락률 전용 날짜 등)를 볼 때는 그
+          날짜와 상관없는 지금 시점 데이터가 뜨는 셈이라 숨긴다. */}
+      {hasAi && <CategoryRankTrend themeTrend={themeTrend} />}
 
       {hasAi && (
         <>
