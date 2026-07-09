@@ -30,6 +30,10 @@ from pymongo import MongoClient
 
 import 뉴스분석  # fetch_news/_call_naver/NEWS_QUERIES/NAVER_ID/NAVER_SECRET/MONGODB_URI 재사용 (주간분석.py와 동일한 선례)
 
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 CACHE_PATH = os.path.join('백필작업', '뉴스분석_캐시.json')
 CONSECUTIVE_FAILURE_THRESHOLD = 20
 

@@ -11,6 +11,10 @@ import json
 from dotenv import load_dotenv
 from pymongo import MongoClient
 
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 load_dotenv('.env.local')
 
 # DATA_PIPELINE.md의 28개 카테고리 목록과 손으로 동기화해야 함 — 목록을 추가/삭제/이름

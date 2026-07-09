@@ -9,6 +9,7 @@ FinanceDataReader 전종목 수집 + Naver 뉴스 수집 + MongoDB 저장 스크
 
 import os
 import re
+import sys
 import json
 import time
 import requests
@@ -17,6 +18,13 @@ from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
 from dotenv import load_dotenv
 from pymongo import MongoClient
+
+# Windows 콘솔 기본 cp949는 em dash(—) 등 일부 문자를 인코딩 못 해 print에서
+# UnicodeEncodeError로 스크립트 전체가 죽는 사고가 있었음(2026-07-10, 주도주분석.py에서
+# DART 타임아웃 예외 메시지 출력 중 발견) — 항상 UTF-8로 강제.
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
 load_dotenv('.env.local')
 

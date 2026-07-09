@@ -6,8 +6,13 @@ KIS(한국투자증권) Open API 인증·호출 테스트 스크립트
 """
 
 import os
+import sys
 import requests
 from dotenv import load_dotenv
+
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
 load_dotenv('.env.local')
 

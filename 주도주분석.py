@@ -13,6 +13,10 @@ from pymongo import MongoClient
 
 import 종목분석
 
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 load_dotenv('.env.local')
 
 

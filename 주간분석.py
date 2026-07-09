@@ -21,6 +21,7 @@
 """
 
 import os
+import sys
 import time
 from datetime import datetime, timedelta
 import FinanceDataReader as fdr
@@ -31,6 +32,10 @@ import 뉴스분석  # KIS 통합(KRX+NXT) 보강 로직 재사용 — get_kis_t
                   # fetch_market_data/임계값 상수. import만 해도 main()은 실행 안 됨
                   # (if __name__=='__main__' 가드, 주도주분석.py가 종목분석.py를 임포트하는
                   # 기존 패턴과 동일).
+
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
 load_dotenv('.env.local')
 
