@@ -131,3 +131,15 @@
   스크립트에서 `주간분석.py`로 흡수해, `python 주간분석.py` 한 번으로 vol/rate/etfRank가 모두
   채워지게 함 ([DATA_PIPELINE.md](DATA_PIPELINE.md), [ARCHITECTURE.md](ARCHITECTURE.md),
   [FEATURES.md](FEATURES.md) 참고)
+- **RS Score 랭킹 계산이 `주간분석.py`에서 `rs랭킹.py`로 분리, 표시 위치도 주간뷰 →
+  독립 탭으로 이동** (2026-07-11): 2026-07-11 도입 당일엔 `주간분석.py` 안에서 계산해
+  `weekly_indices.rsRank`로 저장하고 주간뷰("금주의 코스피/코스닥" 아래, `EtfRankTable`
+  다음)에 표시했으나, 같은 날 사용자가 결과를 보여줄 곳을 상단 탭 "RS랭킹"(구 "차트분석")
+  으로 확정하면서 계산·저장 로직 전체를 별도 `rs랭킹.py`로 분리했다. 저장 위치도
+  `weekly_indices.<주차>.rsRank`(주차별 문서)에서 새 컬렉션 `rs_ranking`의 단일 문서
+  (`_id:'latest'`)로 바뀜 — 이 탭은 달력처럼 날짜를 선택해 과거를 보는 화면이 아니라
+  "지금 기준 RS 랭킹"만 보여주면 되기 때문. `RsRankTable.jsx`는 주간뷰에서 빠지고
+  `RsRankingView.jsx`(신설, `/api/getRsRanking` 자체 fetch)가 소유하는 컴포넌트로 옮겨짐.
+  `rs_category_cache`(카테고리 영속 캐시)는 위치·이름 그대로 유지 — `rs랭킹.py`가 계속
+  읽고 쓴다 ([DATA_PIPELINE.md](DATA_PIPELINE.md), [ARCHITECTURE.md](ARCHITECTURE.md),
+  [FRONTEND.md](FRONTEND.md) 참고)

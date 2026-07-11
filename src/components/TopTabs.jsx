@@ -1,7 +1,7 @@
 const TABS = [
   { key: 'main',     label: '주식 거래대금·등락률 분석' },
   { key: 'stock',    label: '종목 분석' },
-  { key: 'chart',    label: '차트분석' },
+  { key: 'rsRanking', label: 'RS랭킹' },
   { key: 'screener', label: '조건 검색' },
 ];
 

@@ -3,10 +3,12 @@
 ## 화면 구성 (현재, 위에서 아래 순서)
 
 ### 상단 탭 (App.jsx의 `topTab` 상태, TopTabs.jsx)
-- `app-top`(Header+TopTabs를 함께 감싸는 sticky 영역) 안에 3개 탭
+- `app-top`(Header+TopTabs를 함께 감싸는 sticky 영역) 안에 4개 탭
   1. **주식 거래대금·등락률 분석** — 기존 화면 전체(Calendar~Tables)
   2. **종목 분석** — `StockAnalysis.jsx`, 아래 절 참고
-  3. **조건 검색** — 내용 미정, "준비 중" placeholder만 표시
+  3. **RS랭킹**(`key: 'rsRanking'`, 2026-07-11 "차트분석"에서 이름 변경) — `RsRankingView.jsx`,
+     아래 절 참고
+  4. **조건 검색** — 내용 미정, "준비 중" placeholder만 표시
 - 탭 전환은 클라이언트 상태로만 처리 (URL 라우팅 없음, react-router 미사용)
 
 ### StockAnalysis.jsx (2026-06-24 도입, 2026-06-25 종목 검색 + 손익계산서·재무상태표 연동 추가)
@@ -284,21 +286,30 @@ meet`)으로 둔다는 점**(`TrendChart`는 막대/꺾은선이라 `none`으로
 종목은 펼친 목록에서 빨간색(`.pie-candidate`, `var(--c-up)`)으로 표시하고 호버 시 제안
 카테고리 이름을 `title` 툴팁으로 보여줌(2026-06-27 추가).
 
-### RsRankTable.jsx (2026-07-11 도입)
-- 주간뷰(카테고리 비중 도넛 ~ ETF 등락률 상위 15 ~ 주간 종목 데이터 표 사이, `EtfRankTable`
-  바로 다음)에 삽입되는 RS Score 랭킹 표 — `EtfRankTable.jsx`와 같은 `.tbl-card`/`.tbl-wrap`
-  패턴을 그대로 재사용한 카드형 표. `weekly_indices.rsRank`(`주간분석.py`의
-  `rs_ranking()`이 산출 — RS Score 백분위 90 이상만 이미 필터링·정렬돼 내려옴(도입 당일
-  80으로 시작했다가 카테고리 미분류 종목이 364개로 너무 많이 나와 90으로 상향, 아래
-  [DATA_PIPELINE.md](DATA_PIPELINE.md) "rs_ranking" 절 참고)를 그대로 받아 순위·종목명·
-  RS Score·카테고리 4열로 표시. **"100점부터 90점까지 위아래로 스크롤"** 요구사항은
-  별도 CSS 없이 `.tbl-wrap`의 기존 `overflow-y: auto; max-height: 790px`와 `thead th`의
-  기존 `position: sticky` 스타일(둘 다 `styles.css`에 이미 있던 범용 규칙)만으로 충족됨 —
-  헤더가 스크롤 중에도 고정되어 보임. 컬럼 클릭 정렬은 `EtfRankTable`과 동일한 패턴
-  (기본 정렬은 `rank` 오름차순). `카테고리`가 없는 종목(과거 `ai_analysis`에서 못 찾은
-  경우)은 `-`로 표시 — `Tables.jsx`의 `showCategory` 열과 동일한 처리. `rsRank`가 비어
-  있으면(이 기능 도입 전 과거 주차 등) "이번 주 RS Score 랭킹 데이터가 아직 없습니다"
-  placeholder만 표시(`EtfRankTable`과 동일한 빈 상태 처리).
+### RsRankingView.jsx + RsRankTable.jsx (2026-07-11 도입, 같은 날 주간뷰 → 독립 탭으로 이동)
+- **"RS랭킹" 탭의 내용.** `RsRankingView.jsx`가 이 탭의 소유 컴포넌트(`StockAnalysis.jsx`와
+  같은 패턴 — App.jsx의 상태 관리 없이 컴포넌트 자체가 마운트 시 `/api/getRsRanking`을
+  fetch)이고, `RsRankTable.jsx`는 그 결과를 받아 표로만 그리는 순수 표시 컴포넌트로 분리돼
+  있다. 원래(2026-07-11 도입 당일) `RsRankTable`은 주간뷰(카테고리 비중 도넛 ~ 주간 종목
+  데이터 표 사이, `EtfRankTable` 다음)에 있었으나, RS Score 계산이 `주간분석.py`에서
+  `rs랭킹.py`로 분리되며 표시 위치도 같은 날 독립 탭으로 옮겨졌다(주간 종목 데이터 페이지
+  에는 더 이상 표시 안 함, [HISTORY.md](HISTORY.md) 참고).
+- `RsRankTable`은 `EtfRankTable.jsx`와 같은 `.tbl-card`/`.tbl-wrap` 패턴을 재사용한 카드형
+  표 — `rs_ranking` 컬렉션의 `rsRank` 배열(`rs랭킹.py`의 `rs_ranking()`이 산출 — RS Score
+  백분위 90 이상만 이미 필터링·정렬돼 내려옴, 도입 당일 80으로 시작했다가 카테고리
+  미분류 종목이 364개로 너무 많이 나와 90으로 상향, [DATA_PIPELINE.md](DATA_PIPELINE.md)
+  "rs랭킹.py" 절 참고)를 그대로 받아 순위·종목명·RS Score·카테고리 4열로 표시.
+  **"100점부터 90점까지 위아래로 스크롤"** 요구사항은 별도 CSS 없이 `.tbl-wrap`의 기존
+  `overflow-y: auto; max-height: 790px`와 `thead th`의 기존 `position: sticky` 스타일
+  (둘 다 `styles.css`에 이미 있던 범용 규칙)만으로 충족됨 — 헤더가 스크롤 중에도 고정되어
+  보임. 컬럼 클릭 정렬은 `EtfRankTable`과 동일한 패턴(기본 정렬은 `rank` 오름차순).
+  `카테고리`가 없는 종목(과거 `ai_analysis`/`rs_category_cache` 모두에서 못 찾은 경우)은
+  `-`로 표시 — `Tables.jsx`의 `showCategory` 열과 동일한 처리.
+- **날짜/주차 선택 없이 항상 "지금 기준" 최신 결과만 보여줌**(달력과 무관) — `rsRank`가
+  비어있으면(`rs랭킹.py`를 아직 한 번도 실행 안 한 경우) "RS Score 랭킹 데이터가 아직
+  없습니다. rs랭킹.py를 먼저 실행해 주세요" placeholder를 표시. `RsRankingView`는 이
+  fetch가 끝나기 전까지 "불러오는 중..." placeholder를, 실패 시 "조회 중 오류가
+  발생했습니다" placeholder를 별도로 보여준다.
 
 ### Tables.jsx
 - **주차(W##) 클릭 시 "주간 종목 데이터"도 이 컴포넌트를 그대로 재사용**(2026-06-27 추가,

@@ -7,7 +7,7 @@ import Analysis, { CategoryPieCarousel } from './components/Analysis';
 import Tables from './components/Tables';
 import StockAnalysis from './components/StockAnalysis';
 import EtfRankTable from './components/EtfRankTable';
-import RsRankTable from './components/RsRankTable';
+import RsRankingView from './components/RsRankingView';
 import {
   dateToISO, CACHE_VERSION,
   saveAnalysisToStorage, loadAnalysisFromStorage,
@@ -175,8 +175,8 @@ export default function App() {
               if (valid) {
                 fetch(`/api/getData?week=${weekKey}`)
                   .then(r => r.json())
-                  .then(({ vol, rate, etfRank, rsRank }) => {
-                    if (vol && rate) setWeekVolRate({ vol, rate, etfRank, rsRank });
+                  .then(({ vol, rate, etfRank }) => {
+                    if (vol && rate) setWeekVolRate({ vol, rate, etfRank });
                   })
                   .catch(() => {});
               }
@@ -200,11 +200,6 @@ export default function App() {
               />
               <EtfRankTable
                 etfRank={weekVolRate.etfRank}
-                week={weekSelected}
-                lastTradingDate={weekIdx?.lastTradingDate}
-              />
-              <RsRankTable
-                rsRank={weekVolRate.rsRank}
                 week={weekSelected}
                 lastTradingDate={weekIdx?.lastTradingDate}
               />
@@ -240,7 +235,7 @@ export default function App() {
         </>
       )}
       {topTab === 'stock'    && <StockAnalysis target={stockJumpTarget} />}
-      {topTab === 'chart'    && <div className="tab-placeholder">차트분석 — 준비 중입니다</div>}
+      {topTab === 'rsRanking' && <RsRankingView />}
       {topTab === 'screener' && <div className="tab-placeholder">조건 검색 — 준비 중입니다</div>}
     </div>
   );

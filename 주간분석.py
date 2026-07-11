@@ -16,14 +16,12 @@
     하던 구성종목(holdings) 역색인 갱신 기능은 웹앱 "ETF 분석" 탭 자체를 접으면서 함께
     삭제함 — KIS ETF 구성종목 API 응답이 불안정했던 문제([HISTORY.md](HISTORY.md) 참고)
     라기보다 "구성종목 검색" 기능 자체를 유지할 필요가 없다고 판단해 정리한 것)
-    (rsRank는 전종목 대상 RS Score(3/6/9/12개월 수익률 가중합, 주식자동매매/차트분석/
-    16-RS랭킹.md 공식 포팅) 백분위 90 이상 종목 — {rank, code, name, rsScore, 카테고리?}
-    배열, 2026-07-11 추가(도입 당일 첫 실행에서 80 기준으로는 527개·미분류 364개가 나와
-    카테고리 수작업 분류 범위가 너무 넓어져 90으로 상향). 카테고리는 과거 ai_analysis에서
-    찾은 것만 채워지고 못 찾은 종목은 필드가 비어 있어 실행 후 Claude Code가 채워야 함,
-    아래 "주간분석.py" 절 참고)
   - 웹앱 달력의 그 주 주차(W##) 칸이 kospi/kosdaq을 읽어 표시하고, 그 주차를 클릭하면
     카테고리 비중 도넛과 주간 종목 데이터 표 사이에 etfRank 표도 함께 보여줌
+
+RS Score(상대강도) 랭킹은 2026-07-11부터 이 스크립트가 아니라 별도 rs랭킹.py가 계산·
+저장한다(웹앱 "RS랭킹" 탭 전용, 주간뷰에는 표시하지 않기로 사용자가 결정) — 자세한
+내용은 rs랭킹.py와 DATA_PIPELINE.md "rs랭킹.py" 절 참고.
 """
 
 import os
@@ -31,7 +29,6 @@ import sys
 import time
 from datetime import datetime, timedelta
 import FinanceDataReader as fdr
-import pandas as pd
 from dotenv import load_dotenv
 from pymongo import MongoClient
 
@@ -39,10 +36,6 @@ import 뉴스분석  # KIS 통합(KRX+NXT) 보강 로직 재사용 — get_kis_t
                   # fetch_market_data/임계값 상수. import만 해도 main()은 실행 안 됨
                   # (if __name__=='__main__' 가드, 주도주분석.py가 종목분석.py를 임포트하는
                   # 기존 패턴과 동일).
-import 저장분석  # VALID_CATEGORIES(28개 카테고리 목록)를 단일 진실 공급원으로 재사용 —
-                  # RS 랭킹 카테고리 캐시(rs_category_cache)가 이 목록을 그대로 따라야 해서
-                  # 이 파일 안에 별도 사본을 만들지 않는다. 저장분석.py도 if __name__=='__main__'
-                  # 가드가 있어 import만 해선 부작용 없음(위 뉴스분석.py와 동일한 패턴).
 
 if sys.stdout.encoding != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -447,217 +440,6 @@ def etf_weekly_rank(db, top=15):
     return target_week, etf_rank
 
 
-# ── RS Score 랭킹 (Relative Strength, 2026-07-11 도입) ──────────────────────
-# 주식자동매매/차트분석/16-RS랭킹.md에 문서화된 RS Score 공식(윌리엄 오닐/IBD 스타일
-# 근사식: 최근 3/6/9/12개월 수익률에 40/20/20/20% 가중치)을 그대로 포팅한다. 원 구현은
-# 그 프로젝트의 backtest/relative_strength.py에 있으나 완전히 다른 git 저장소라 import할
-# 수 없어(뉴스분석.py를 이 파일이 import하는 것과 달리 로컬 파일 경로 자체가 없음) 필요한
-# 부분만 이 파일에 다시 구현했다. rsScore는 계산에 성공한 종목군 내 백분위(0~100, 원
-# 프로젝트의 rs_percentile과 동일한 정의 — 전체 시장 절대 기준이 아니라 이번 주 계산
-# 대상(상장 1년 미만 제외 후 전종목) 내에서의 상대 순위)이며, 사용자가 화면에서 보는
-# "RS score 100점~90점"이 바로 이 값이다.
-
-RS_WEIGHTS = {3: 0.4, 6: 0.2, 9: 0.2, 12: 0.2}       # 개월 수 → 가중치
-RS_MIN_HISTORY_DAYS = 365  # 상장 1년 미만(또는 장기 거래정지로 이력 부족) 제외
-RS_PERCENTILE_THRESHOLD = 90  # 이 백분위 이상만 weekly_indices.rsRank에 저장(2026-07-11
-                               # 도입 당일 80으로 첫 실행해보니 527개·미분류 364개가 나와
-                               # 카테고리 수작업 분류 범위를 줄이려고 90으로 상향, 사용자 확정)
-
-
-def _price_at_or_before(hist, target_ts):
-    """target_ts 이전(포함) 가장 최근 거래일 종가. 이력이 그 시점까지 없으면 None."""
-    window = hist[hist.index <= target_ts]
-    if window.empty:
-        return None
-    return float(window['Close'].iloc[-1])
-
-
-def _compute_return(hist, as_of_ts, months_ago, current_price):
-    """as_of_ts 기준 months_ago개월 전(달력 기준 pd.DateOffset — "개월" 표현과 직접
-    대응시키기 위해 거래일수 고정 오프셋을 쓰지 않음) 대비 수익률."""
-    base_price = _price_at_or_before(hist, as_of_ts - pd.DateOffset(months=months_ago))
-    if base_price is None or base_price <= 0:
-        return None
-    return (current_price - base_price) / base_price
-
-
-def compute_rs_scores(universe, as_of_date):
-    """universe(뉴스분석.fetch_market_data() 결과, KONEX·스팩 이미 제외)의 각 종목에 대해
-    RS Score·백분위를 계산한다. 종목당 fdr.DataReader를 1회 호출(fetch_weekly_market_data와
-    동일한 패턴)해 12개월치 종가 이력을 받으므로, 전종목(약 2,875개) 대상이면 시간이 오래
-    걸릴 수 있다(사용자 확정 — 느려도 전종목 대상 유지). 상장 1년 미만은 결과에서 제외.
-    반환: rsScore(백분위) 내림차순 [{code, name, rsScore}] 리스트."""
-    as_of_ts = pd.Timestamp(as_of_date)
-    fetch_start = as_of_date - timedelta(days=400)  # 12개월 수익률 계산 + 휴일 여유
-
-    results = []
-    total = len(universe)
-    for i, (_, r) in enumerate(universe.iterrows(), start=1):
-        if i % 500 == 0:
-            print(f'  RS Score 계산 중... ({i}/{total})')
-        code = r['Code']
-        try:
-            hist = fdr.DataReader(code, fetch_start, as_of_date)
-        except Exception:
-            continue
-        if hist.empty:
-            continue
-        if (as_of_ts - hist.index[0]).days < RS_MIN_HISTORY_DAYS:
-            continue  # 상장 1년 미만(또는 장기 거래정지) — 제외
-        current_price = _price_at_or_before(hist, as_of_ts)
-        if current_price is None or current_price <= 0:
-            continue
-
-        returns = {}
-        for months_ago in RS_WEIGHTS:
-            ret = _compute_return(hist, as_of_ts, months_ago, current_price)
-            if ret is None:
-                break
-            returns[months_ago] = ret
-        if len(returns) < len(RS_WEIGHTS):
-            continue  # 3/6/9/12개월 수익률 중 하나라도 계산 불가하면 제외
-
-        rs_score_raw = sum(RS_WEIGHTS[m] * v for m, v in returns.items())
-        results.append({'code': code, 'name': r['Name'], 'rsScoreRaw': rs_score_raw})
-
-    if not results:
-        return []
-    percentiles = pd.Series([s['rsScoreRaw'] for s in results]).rank(pct=True) * 100
-    for s, pct in zip(results, percentiles):
-        s['rsScore'] = round(float(pct), 1)
-        del s['rsScoreRaw']
-
-    results.sort(key=lambda s: s['rsScore'], reverse=True)
-    return results
-
-
-def fetch_global_category_map():
-    """RS Score 상위 종목의 업종 카테고리를 매기기 위해, fetch_weekly_category_map()과
-    달리 그 주로 범위를 좁히지 않고 지금까지 저장된 모든 ai_analysis 문서를 날짜
-    오름차순으로 훑어 종목명별 최신 카테고리를 모은다 — RS 백분위 90 이상 종목은 대부분
-    그 주 거래대금·등락률 상위 50 밖에 있어서 그 주 ai_analysis만 봐서는 거의 매칭이 안
-    되기 때문. 한 번이라도 일간 분석에서 분류된 적 있는 종목은 그 카테고리를 그대로
-    재사용해 "이미 분류된 종목은 스킵"하는 효과를 낸다. rs_ranking()에서 이 함수가
-    1순위 소스로 쓰이고, 여기서 못 찾은 종목은 fetch_category_cache_map()(rs_category_cache,
-    영속 캐시)이 2순위로 보완한다 — 두 함수 모두 못 찾은 종목만 진짜 미분류로 남는다."""
-    if not MONGODB_URI:
-        return {}
-    client = MongoClient(MONGODB_URI)
-    docs = list(client.get_default_database()['ai_analysis'].find({}))
-    client.close()
-    docs.sort(key=lambda d: d['_id'])
-
-    cat_map = {}
-    for doc in docs:
-        analysis = doc.get('analysis', {})
-        for key in ('거래대금', '등락률'):
-            for item in analysis.get(key, []):
-                name = item.get('종목명')
-                cat = item.get('카테고리')
-                if name and cat:
-                    cat_map[name] = {'카테고리': cat, '신규카테고리후보': item.get('신규카테고리후보')}
-    return cat_map
-
-
-# ── RS 랭킹 카테고리 영속 캐시 (2026-07-11 도입) ────────────────────────────
-# fetch_global_category_map()(ai_analysis 기반)은 그 종목이 일간 상위50에 한 번도
-# 안 든 "RS 전용" 종목은 영원히 못 찾는다. 이전에는 그런 종목을 Claude Code가 조사해
-# weekly_indices.rsRank에 직접 patch했는데, rs_ranking()이 매 실행마다 rsRank 전체를
-# 새로 계산해 덮어써서 그 patch가 다음 실행(다음 주 등) 때 사라지는 문제가 있었다
-# (2026-W28 첫 실행에서 실제로 겪음 — 90점 기준 264개 중 150개 미분류를 임시로 '기타'
-# patch했다가 재실행하면 사라진다는 걸 확인). rs_category_cache 컬렉션(_id=종목명)을
-# 새로 두어 Claude Code가 조사한 결과를 영속 저장하고, ai_analysis에서 못 찾은 종목만
-# 여기서 보완한다.
-
-RS_CATEGORY_CACHE_COLLECTION = 'rs_category_cache'
-
-
-def fetch_category_cache_map(db):
-    """rs_category_cache에서 '현재' 저장분석.VALID_CATEGORIES에 있는 카테고리 값을 가진
-    문서만 읽어 {종목명: {카테고리, 신규카테고리후보}}로 반환한다(fetch_global_category_map()
-    과 동일한 shape이라 attach_categories()에 그대로 넘길 수 있음). 카테고리 목록이
-    개편(이름 변경·삭제)돼 저장 당시엔 유효했던 값이 더 이상 VALID_CATEGORIES에 없으면
-    이 쿼리에서 자동으로 빠진다 — 문서를 지우거나 고치는 별도 무효화 작업 없이 "조회
-    시점 기준"으로 항상 최신 목록에 맞춰 필터링되므로, 다음 RS Score 계산 전에 카테고리
-    개편이 자동으로 반영된다(사용자 요청). 목록이 나중에 원래대로 되돌아오면 그 문서도
-    다시 자동으로 유효해짐 — 삭제 방식이었다면 사라졌을 복구성을 의도적으로 남겨둔
-    설계다. db는 호출부(rs_ranking)가 이미 열어둔 핸들을 그대로 받는다(fetch_global_
-    category_map()처럼 별도 MongoClient를 새로 열지 않음)."""
-    if db is None:
-        return {}
-    docs = db[RS_CATEGORY_CACHE_COLLECTION].find(
-        {'카테고리': {'$in': list(저장분석.VALID_CATEGORIES)}})
-    return {d['_id']: {'카테고리': d['카테고리'], '신규카테고리후보': d.get('신규카테고리후보')}
-            for d in docs}
-
-
-def report_stale_category_cache(db):
-    """rs_category_cache 전체를 훑어 카테고리 값이 더 이상 저장분석.VALID_CATEGORIES에
-    없는 문서(카테고리 목록 개편으로 무효화된 캐시)를 콘솔에 보고만 한다 —
-    fetch_category_cache_map()이 이미 이런 문서를 결과에서 자동으로 제외하므로 실제
-    매칭 동작에는 영향이 없는 진단용 함수다. 삭제·수정하지 않는 이유: (a) 이 스크립트는
-    Claude/Codex를 호출하지 않아 그 자리에서 재분류를 못 하고(기존 원칙 유지), (b) 목록
-    개편이 나중에 되돌려지면 문서가 다시 자동으로 유효해지는 복구성을 지우지 않기
-    위함. rs_ranking() 맨 앞에서 호출해 "이번 실행부터 재분류가 필요해진 종목"을 조기에
-    알린다."""
-    if db is None:
-        return []
-    docs = list(db[RS_CATEGORY_CACHE_COLLECTION].find({}, {'_id': 1, '카테고리': 1}))
-    stale = [d for d in docs if d.get('카테고리') not in 저장분석.VALID_CATEGORIES]
-    if stale:
-        names = ', '.join(d['_id'] for d in stale)
-        print(f'[알림] 카테고리 목록 개편 감지 — rs_category_cache에서 {len(stale)}개 '
-              f'무효화됨(이번 실행부터 재분류 대상): {names}')
-    return stale
-
-
-def rs_ranking(db, target_week, trading_dates):
-    """그 주 마지막 거래일 기준 RS Score 백분위 90 이상 종목을 산출해 weekly_indices에
-    rsRank 필드로 저장한다. 이 스크립트는 Claude/Codex를 호출하지 않으므로(기존
-    attach_categories와 동일한 원칙) 카테고리를 새로 판단하지 못하고, 두 소스를 순서대로
-    병합해서 채운다 — 1순위 fetch_global_category_map()(ai_analysis, 항상 최신),
-    2순위 fetch_category_cache_map(db)(rs_category_cache, ai_analysis에 없는 RS 전용
-    종목을 위한 영속 캐시). 둘 다 없는 종목만 '카테고리' 필드 없이 남으며, python
-    주간분석.py 실행 후 Claude Code가 그 종목들을 본업·최근 뉴스 기준으로 분류해
-    (불확실하면 WebSearch) rs_category_cache에 upsert하는 표준 워크플로우를 거친다(기존
-    vol/rate 카테고리 공백 채우기 워크플로우와 동일한 패턴 — DATA_PIPELINE.md 참고).
-    rs_category_cache에 한 번 기록되면 다음 주 이후로도 재사용되므로, 예전처럼
-    weekly_indices.rsRank에만 직접 patch했을 때와 달리 재실행해도 사라지지 않는다.
-    적합한 카테고리가 없으면 '기타'+'신규카테고리후보'로 표시하고 사용자에게 새 카테고리
-    추가가 필요한지 보고한다 — 카테고리 목록 자체를 추가·변경하는 것은 항상 사용자가
-    결정하며 Claude Code가 임의로 하지 않는다."""
-    as_of_date = trading_dates[-1]
-    print(f'RS Score 랭킹 계산 중... (기준일 {as_of_date}, 전종목 대상 — 시간이 걸릴 수 있음)')
-    universe = 뉴스분석.fetch_market_data()
-    scored = compute_rs_scores(universe, as_of_date)
-    print(f'RS Score 계산 완료: {len(scored)}개 종목(상장 1년 미만 제외)')
-
-    top = [s for s in scored if s['rsScore'] >= RS_PERCENTILE_THRESHOLD]
-    for rank, s in enumerate(top, start=1):
-        s['rank'] = rank
-
-    report_stale_category_cache(db)  # 카테고리 목록 개편 감지·보고(파괴적 작업 없음)
-
-    cat_map_ai = fetch_global_category_map()       # 1순위: ai_analysis(항상 최신)
-    cat_map_cache = fetch_category_cache_map(db)    # 2순위: rs_category_cache(영속 폴백)
-    cat_map = {**cat_map_cache, **cat_map_ai}       # 뒤 인자가 우선 — ai_analysis가 있으면 그걸로 덮어씀
-    attach_categories(top, cat_map)
-
-    matched_ai = sum(1 for s in top if s['name'] in cat_map_ai)
-    matched_cache_only = sum(1 for s in top if s['name'] in cat_map_cache and s['name'] not in cat_map_ai)
-    matched = sum(1 for s in top if '카테고리' in s)
-    print(f'RS Score {RS_PERCENTILE_THRESHOLD}점 이상 {len(top)}개 종목 산출 완료'
-          f' (ai_analysis 매칭 {matched_ai}개, rs_category_cache 매칭 {matched_cache_only}개,'
-          f' 전체 매칭 {matched}/{len(top)})')
-
-    if db is not None:
-        db['weekly_indices'].update_one({'_id': target_week}, {'$set': {'rsRank': top}}, upsert=True)
-        print(f'MongoDB 저장 완료: weekly_indices/{target_week}.rsRank ({len(top)}개)')
-    else:
-        print('[경고] MONGODB_URI 없음 — RS Score 랭킹 MongoDB 저장 건너뜀')
-    return top
-
-
 def save_to_mongodb(week, entry):
     if not MONGODB_URI:
         print('[경고] MONGODB_URI 없음 — MongoDB 저장 건너뜀')
@@ -733,16 +515,6 @@ def main():
     etf_weekly_rank(etf_db)
     if etf_client is not None:
         etf_client.close()
-
-    if resolved is not None:
-        rs_target_week, rs_trading_dates = resolved  # 위에서 이미 계산해둔 값 재사용(재조회 없음)
-        rs_client = MongoClient(MONGODB_URI) if MONGODB_URI else None
-        rs_db = rs_client.get_default_database() if rs_client is not None else None
-        rs_ranking(rs_db, rs_target_week, rs_trading_dates)
-        if rs_client is not None:
-            rs_client.close()
-    else:
-        print('[경고] RS Score 랭킹을 계산할 거래일이 없어 건너뜁니다.')
 
     print('웹앱 달력의 이번 주 주차(W##) 칸에 반영됩니다.')
 
