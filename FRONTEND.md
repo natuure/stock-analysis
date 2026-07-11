@@ -11,11 +11,13 @@
 
 ### StockAnalysis.jsx (2026-06-24 도입, 2026-06-25 종목 검색 + 손익계산서·재무상태표 연동 추가)
 - "종목 분석" 탭의 내용. 맨 위에 종목명 검색창(`.stock-search`, `<input list=>` + `<datalist>`로
-  자동완성)이 있고, 그 아래 기업개요·재무상태표·손익계산서·현금흐름표 4개 버튼을 그리드로 표시
+  자동완성)이 있고, 그 아래 기업개요·시장관심도·재무상태표·손익계산서 4개 버튼을 그리드로 표시
   (`.stock-analysis-tabs`, 데스크톱 4열 → 767px 이하 2열 `.stock-analysis-btn` 폰트/패딩도 같이
   축소 — 안 줄이면 2열 폭에서 "기업개요" 같은 4글자 라벨도 줄바꿈되어 깨짐, 직접 확인함).
-  클릭하면 `active` 상태만 토글되고(파란 테두리+파란 글자) 해당 버튼의 뷰가 표시됨. 현금흐름표는
-  아직 "준비 중" placeholder. 기업개요는 아래 별도 절 참고.
+  클릭하면 `active` 상태만 토글되고(파란 테두리+파란 글자) 해당 버튼의 뷰가 표시됨. 기존
+  4번째 탭(현금흐름표)이 시장관심도로 교체됐고(`key: 'interest'`, 2026-07-11), 이후 기업개요
+  바로 다음(2번째)로 순서 이동(2026-07-11) — 아직 내용은 "준비 중" placeholder(별도 뷰
+  컴포넌트 없이 기본 placeholder 분기로 떨어짐). 기업개요는 아래 별도 절 참고.
 - **`target` prop으로 외부에서 검색 트리거**(2026-06-28 추가) — 거래대금·등락률 표의 "이동"
   버튼(`Tables.jsx`)이 `App.jsx`의 `stockJumpTarget` state를 채우면 그 값이 `target`으로
   전달돼, `useEffect([target])`가 검색창에 그 종목명을 채우고 검색을 자동 실행(`active`도
@@ -281,6 +283,22 @@ meet`)으로 둔다는 점**(`TrendChart`는 막대/꺾은선이라 `none`으로
 아코디언 패턴, 도넛마다 독립적인 펼침 상태). `candidate`(`신규카테고리후보` 값)가 있는
 종목은 펼친 목록에서 빨간색(`.pie-candidate`, `var(--c-up)`)으로 표시하고 호버 시 제안
 카테고리 이름을 `title` 툴팁으로 보여줌(2026-06-27 추가).
+
+### RsRankTable.jsx (2026-07-11 도입)
+- 주간뷰(카테고리 비중 도넛 ~ ETF 등락률 상위 15 ~ 주간 종목 데이터 표 사이, `EtfRankTable`
+  바로 다음)에 삽입되는 RS Score 랭킹 표 — `EtfRankTable.jsx`와 같은 `.tbl-card`/`.tbl-wrap`
+  패턴을 그대로 재사용한 카드형 표. `weekly_indices.rsRank`(`주간분석.py`의
+  `rs_ranking()`이 산출 — RS Score 백분위 90 이상만 이미 필터링·정렬돼 내려옴(도입 당일
+  80으로 시작했다가 카테고리 미분류 종목이 364개로 너무 많이 나와 90으로 상향, 아래
+  [DATA_PIPELINE.md](DATA_PIPELINE.md) "rs_ranking" 절 참고)를 그대로 받아 순위·종목명·
+  RS Score·카테고리 4열로 표시. **"100점부터 90점까지 위아래로 스크롤"** 요구사항은
+  별도 CSS 없이 `.tbl-wrap`의 기존 `overflow-y: auto; max-height: 790px`와 `thead th`의
+  기존 `position: sticky` 스타일(둘 다 `styles.css`에 이미 있던 범용 규칙)만으로 충족됨 —
+  헤더가 스크롤 중에도 고정되어 보임. 컬럼 클릭 정렬은 `EtfRankTable`과 동일한 패턴
+  (기본 정렬은 `rank` 오름차순). `카테고리`가 없는 종목(과거 `ai_analysis`에서 못 찾은
+  경우)은 `-`로 표시 — `Tables.jsx`의 `showCategory` 열과 동일한 처리. `rsRank`가 비어
+  있으면(이 기능 도입 전 과거 주차 등) "이번 주 RS Score 랭킹 데이터가 아직 없습니다"
+  placeholder만 표시(`EtfRankTable`과 동일한 빈 상태 처리).
 
 ### Tables.jsx
 - **주차(W##) 클릭 시 "주간 종목 데이터"도 이 컴포넌트를 그대로 재사용**(2026-06-27 추가,

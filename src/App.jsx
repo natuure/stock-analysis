@@ -7,6 +7,7 @@ import Analysis, { CategoryPieCarousel } from './components/Analysis';
 import Tables from './components/Tables';
 import StockAnalysis from './components/StockAnalysis';
 import EtfRankTable from './components/EtfRankTable';
+import RsRankTable from './components/RsRankTable';
 import {
   dateToISO, CACHE_VERSION,
   saveAnalysisToStorage, loadAnalysisFromStorage,
@@ -174,8 +175,8 @@ export default function App() {
               if (valid) {
                 fetch(`/api/getData?week=${weekKey}`)
                   .then(r => r.json())
-                  .then(({ vol, rate, etfRank }) => {
-                    if (vol && rate) setWeekVolRate({ vol, rate, etfRank });
+                  .then(({ vol, rate, etfRank, rsRank }) => {
+                    if (vol && rate) setWeekVolRate({ vol, rate, etfRank, rsRank });
                   })
                   .catch(() => {});
               }
@@ -199,6 +200,11 @@ export default function App() {
               />
               <EtfRankTable
                 etfRank={weekVolRate.etfRank}
+                week={weekSelected}
+                lastTradingDate={weekIdx?.lastTradingDate}
+              />
+              <RsRankTable
+                rsRank={weekVolRate.rsRank}
                 week={weekSelected}
                 lastTradingDate={weekIdx?.lastTradingDate}
               />

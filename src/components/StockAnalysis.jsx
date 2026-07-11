@@ -5,9 +5,9 @@ import { TrendChart, TREND_PALETTE } from './TrendChart';
 
 const SECTIONS = [
   { key: 'overview', label: '기업개요' },
+  { key: 'interest', label: '시장관심도' },
   { key: 'balance',  label: '재무상태표' },
   { key: 'income',   label: '손익계산서' },
-  { key: 'cashflow', label: '현금흐름표' },
 ];
 
 // annual_financials는 연도("2023" 등) 키의 객체라 가장 최근 연도(사업보고서가 최신이면 그
