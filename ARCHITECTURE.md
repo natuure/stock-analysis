@@ -79,6 +79,10 @@ Python (로컬 실행, 고정 IP)
 │   │                             등락률 카테고리 TOP5 추이" 표 2개용)
 │   ├── getRsRanking.js         # GET → rs_ranking 컬렉션의 단일 문서(_id='latest')를 그대로 반환
 │   │                             (2026-07-11 도입, "RS랭킹" 탭 전용 — 날짜/주차 파라미터 없음)
+│   ├── getStockMarketInterest.js  # GET ?code=&name= → 종목 하나의 RS Score 10주 추이(rs_ranking의
+│   │                             주차별 히스토리) + 최근 15거래일 등락률 상위50 등장 + 카테고리 +
+│   │                             카테고리 TOP5 등장을 한 번에 계산해 반환(2026-07-11 도입, "종목 분석"
+│   │                             탭 "시장관심도" 전용)
 │   ├── _kis.js                 # KIS 접근토큰 발급·캐싱 + fetchLiveQuote(현재가 조회) 공용 모듈(라우트 아님,
 │   │                             candles.js·getCompanyOverview.js·analyzeCompany.js가 import)
 │   └── _dart.js                # DART 재무제표 추출·corp_code 조회 공용 모듈(라우트 아님, analyzeCompany.js가
@@ -95,7 +99,10 @@ Python (로컬 실행, 고정 IP)
 │       ├── Tables.jsx       # 거래대금·등락률 테이블, 행 클릭 시 그 표 내부에서 차트 패널을 인라인으로 펼침/접음(독립 상태)
 │       ├── StockChartPanel.jsx  # 종목 클릭 시 표 행 아래에 인라인으로 펼치는 일봉/주봉 캔들 차트 패널(모달 아님)
 │       ├── Analysis.jsx     # ThemeTable + ThemeCategoryTrend(최근 14일 카테고리 추이) + AiPanels + N파일
-│       ├── StockAnalysis.jsx  # "종목 분석" 탭 — 종목명 검색(자동완성)창 + 기업개요/재무상태표/손익계산서/현금흐름표 4버튼
+│       ├── StockAnalysis.jsx  # "종목 분석" 탭 — 종목명 검색(자동완성)창 + 기업개요/시장관심도/재무상태표/손익계산서
+│       │                       4버튼. 시장관심도(MarketInterestView, 2026-07-11 도입)는 api/getStockMarketInterest.js를
+│       │                       탭을 처음 열 때만 지연 fetch — RS Score 10주 추이 + 등락률 상위50 등장 + 카테고리
+│       │                       TOP5 등장을 보여줌
 │       ├── EtfRankTable.jsx   # 주간뷰(카테고리 비중 도넛 ~ 주간 종목 데이터 표 사이)에 삽입되는
 │       │                       ETF 등락률 상위 15 표 — 별도 탭이 아니라 weekVolRate.etfRank를 그대로 받아
 │       │                       렌더링만 함(2026-07-04 도입, 2026-07-06 별도 탭에서 이 위치로 이동)
@@ -144,7 +151,7 @@ Python (로컬 실행, 고정 IP)
 | `candles` | 종목별 토스 일봉 캔들 캐시 (KIS 실패 시 폴백용) | `{ _id: "종목코드_YYYY-MM-DD", candles: [...] }` (해당일 거래대금/등락률 상위 종목만) |
 | `kis_token` | KIS 접근토큰 캐시 (1분당 1회 발급 제한 대응) | `{ _id: "token", accessToken, expiresAt }` 단일 문서 |
 | `weekly_indices` | 주간 코스피/코스닥 변동률 + 주간 거래대금/등락률 상위 50(주간분석.py가 채움, vol/rate/lastTradingDate는 2026-06-27 추가라 그 이전 주차에는 없을 수 있음) + 주간 ETF 등락률 상위 15(`etfRank`, 2026-07-04 도입, 2026-07-06부터 `주간분석.py`가 직접 채움 — 그 이전 주차에는 없을 수 있음). **`rsRank` 필드는 더 이상 채우지 않음**(2026-07-11 도입 당일에만 잠깐 여기 있었고, 같은 날 `rs_ranking` 컬렉션으로 옮김 — 2026-W28 등 도입 당일에 실행된 문서에는 옛 `rsRank` 필드가 그대로 남아있을 수 있으나 화면에서 더 이상 읽지 않음, [HISTORY.md](HISTORY.md) 참고) | `{ _id: "YYYY-W##", kospi: {...}, kosdaq: {...}, vol: [...50], rate: [...50], lastTradingDate: "YYYY-MM-DD", etfRank: [...15] }` |
-| `rs_ranking` | RS Score 랭킹(백분위 90 이상) — `rs랭킹.py`가 계산해 단일 문서로 저장, "RS랭킹" 탭(`api/getRsRanking.js`)이 읽음(2026-07-11 도입). 달력 기반 탐색이 없어 `weekly_indices`처럼 주차별 문서를 쌓지 않고 항상 최신 결과 하나만 유지 | `{ _id: "latest", asOfDate: "YYYY-MM-DD", weekKey: "YYYY-W##", rsRank: [{rank, code, name, rsScore, 카테고리?, 신규카테고리후보?}], updatedAt }` 단일 문서 |
+| `rs_ranking` | 두 종류 문서가 공존(2026-07-11 도입). **① `_id: "latest"`**: RS Score 백분위 90 이상 종목만(+카테고리) — `rs랭킹.py`가 매 실행마다 덮어씀, "RS랭킹" 탭(`api/getRsRanking.js`)이 읽음. **② `_id: "YYYY-W##"`(주차별 히스토리)**: 그 주 계산 성공한 전종목(임계값 무관, 카테고리 없음) — `api/getStockMarketInterest.js`가 특정 종목의 10주 추이를 조회할 때 읽음 | `{ _id: "latest", asOfDate, weekKey, rsRank: [{rank, code, name, rsScore, 카테고리?, 신규카테고리후보?}], updatedAt }` 또는 `{ _id: "YYYY-W##", asOfDate, weekKey, scores: [{code, name, rsScore}], updatedAt }` |
 | `rs_category_cache` | RS Score 랭킹 카테고리 영속 캐시 — `ai_analysis`에 한 번도 등장한 적 없는 RS 전용 종목의 분류를 Claude Code가 조사해 저장, 다음 실행 이후로도 재사용(2026-07-11 도입, `rs랭킹.py`의 `rs_ranking()`이 읽음, [DATA_PIPELINE.md](DATA_PIPELINE.md) "RS 랭킹 카테고리 영속 캐시" 절 참고). `카테고리`는 `저장분석.VALID_CATEGORIES`(28개)를 그대로 따름 — 조회 시점에 그 목록에 없는 값(카테고리 개편으로 무효화)은 자동 제외돼 재분류 대상으로 복귀 | `{ _id: "종목명", code, 카테고리, 신규카테고리후보?, classifiedAt: "YYYY-MM-DD", source: "claude_code_manual" }` |
 | `company_analysis` | 종목별 DART 재무제표 + KIS 현재가 (종목분석.py 수동 실행, `주도주분석.py` 일괄 실행, **또는** `api/analyzeCompany.js` 즉석분석이 채움, "종목 분석" 탭용). **`quote`는 채워진 시점에 박힌 값이라 폴백 전용** — 실제 화면에는 `api/getCompanyOverview.js`가 조회 시점에 KIS로 새로 받아온 현재가가 표시됨(2026-06-25) | `{ _id: "종목코드", name, date, corp_code, quote, annual_financials, quarterly_financials, latest_report }` |
 | `dart_corp_codes` | DART 상장기업 corp_code 매핑(`기업코드동기화.py`가 로컬 `_dart_corp_codes.json`을 1회 옮김, `api/analyzeCompany.js`가 종목명→corp_code 조회에 사용 — Vercel엔 영속 파일시스템이 없어 로컬 JSON 캐싱 패턴을 못 씀, 2026-06-27) | `{ _id: "map", data: { "회사명": { corp_code, stock_code }, ... } }` 단일 문서 |
@@ -161,6 +168,7 @@ Python (로컬 실행, 고정 IP)
 | `/api/getAnalysis` | GET | `?date=YYYY-MM-DD` → ai_analysis 반환 |
 | `/api/getThemeTrend` | GET | `?days=`(기본 14, 최대 90) → ai_analysis에서 최근 N일의 `거래대금`/`등락률` 배열만 프로젝션해 반환(테마 제외, 날짜 내림차순, 2026-06-28부터 `테마`에서 `거래대금`/`등락률`로 교체) — "거래대금·등락률 분석" 탭의 거래대금·등락률 카테고리 TOP5 추이 표 2개용 |
 | `/api/getRsRanking` | GET | 파라미터 없음 → `rs_ranking` 컬렉션의 단일 문서(`_id='latest'`) 반환(2026-07-11 도입) — "RS랭킹" 탭 전용 |
+| `/api/getStockMarketInterest` | GET | `?code=&name=` 필수 → RS Score 10주 추이 + 최근 15거래일 등락률 상위50 등장 + 카테고리 + 카테고리 TOP5 등장을 계산해 반환(2026-07-11 도입) — "종목 분석" 탭 "시장관심도" 전용 |
 | `/api/analyzeStocks` | POST | Claude API 프록시 (현재 미사용) |
 | `/api/candles` | GET | `?symbol=&date=` → KIS Open API로 일봉 캔들 85개 실시간 조회. 실패 시에만 MongoDB `candles`(토스 캐시) 폴백 |
 | `/api/getCompanyOverview` | GET | code 없음: company_analysis 전체 목록(`name`+`stock_code`, 검색 자동완성용) / `?code=종목코드`: 단건 조회 + KIS Open API로 현재가를 실시간 재조회해 `quote` 덮어씀(실패 시에만 저장된 `quote` 폴백) |

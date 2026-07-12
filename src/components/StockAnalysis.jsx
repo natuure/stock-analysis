@@ -97,6 +97,67 @@ function IncomeStatementView({ data }) {
   );
 }
 
+// "시장관심도" 탭(2026-07-11 도입) — api/getStockMarketInterest.js가 계산한 값을 그대로
+// 받아 표시하는 순수 표시 컴포넌트. 데이터 fetch 자체는 StockAnalysis 본체가 담당(아래
+// 참고) — companyData가 바뀌거나 이 탭이 처음 열릴 때만 호출하고 결과를 캐싱해 재조회를
+// 막는다.
+function MarketInterestView({ data }) {
+  const { rsHistory, rateTop50, category, categoryTop5 } = data;
+  return (
+    <div>
+      <div className="trend-chart-title">최근 {rsHistory.length}주 RS Score 추이</div>
+      {rsHistory.length === 0 ? (
+        <div className="tab-placeholder">RS Score 데이터가 아직 없습니다. rs랭킹.py를 먼저 실행해 주세요.</div>
+      ) : (
+        <div className="cat-trend-wrap">
+          <table className="cat-trend-table">
+            <thead>
+              <tr>
+                <th className="cat-trend-rank-col"></th>
+                {rsHistory.map(w => (
+                  <th key={w.weekKey}>{w.asOfDate ? w.asOfDate.slice(5).replace('-', '/') : w.weekKey}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className="cat-trend-rank-col">RS Score</td>
+                {rsHistory.map(w => (
+                  <td key={w.weekKey}>{w.rsScore != null ? w.rsScore.toFixed(1) : '-'}</td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="fin-card">
+        <div className="fin-row">
+          <span className="fin-label">최근 15거래일 등락률 상위 50 등장</span>
+          <span className="fin-value">{rateTop50.count}회</span>
+        </div>
+        {rateTop50.dates.length > 0 && (
+          <div className="fin-dates">{rateTop50.dates.join(', ')}</div>
+        )}
+      </div>
+
+      <div className="fin-card">
+        <div className="fin-row">
+          <span className="fin-label">카테고리</span>
+          <span className="fin-value">{category || '미분류'}</span>
+        </div>
+        <div className="fin-row">
+          <span className="fin-label">최근 15거래일 등락률 TOP5 카테고리 등장</span>
+          <span className="fin-value">{category ? `${categoryTop5.count}회` : '-'}</span>
+        </div>
+        {categoryTop5.dates.length > 0 && (
+          <div className="fin-dates">{categoryTop5.dates.join(', ')}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const BALANCE_ROWS = [
   { key: 'capexRatio',      label: 'CAPEX 비중' },
   { key: 'inventoryRatio',  label: '재고자산 비중' },
@@ -181,6 +242,8 @@ export default function StockAnalysis({ target }) {
   const [companyList, setCompanyList] = useState([]);
   const [companyData, setCompanyData] = useState(null);
   const [status, setStatus] = useState('idle'); // idle | loading | analyzing | notfound | no_report | error
+  const [interestData, setInterestData] = useState(null);
+  const [interestStatus, setInterestStatus] = useState('idle'); // idle | loading | ready | error
 
   useEffect(() => {
     fetch('/api/getCompanyOverview')
@@ -199,10 +262,28 @@ export default function StockAnalysis({ target }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [target]);
 
+  // "시장관심도" 탭을 열었을 때만 지연 조회(2026-07-11 도입) — companyData가 이미 있고
+  // 아직 이 종목의 시장관심도를 안 받아왔으면(interestData가 없음, runSearch가 새 검색마다
+  // null로 초기화해둠) 한 번만 fetch한다. 다른 탭으로 갔다가 다시 돌아와도 같은 종목이면
+  // 재조회하지 않음(interestData가 남아있으므로).
+  useEffect(() => {
+    if (active !== 'interest' || !companyData || interestData) return;
+    setInterestStatus('loading');
+    fetch(`/api/getStockMarketInterest?code=${companyData.stock_code}&name=${encodeURIComponent(companyData.name)}`)
+      .then(r => r.json())
+      .then(data => {
+        setInterestData(data);
+        setInterestStatus('ready');
+      })
+      .catch(() => setInterestStatus('error'));
+  }, [active, companyData, interestData]);
+
   function runSearch(name) {
     if (!name) return;
     if (status === 'loading' || status === 'analyzing') return; // 중복 제출 가드
     setStatus('loading');
+    setInterestData(null); // 이전 종목의 시장관심도 데이터가 잠깐이라도 새 종목에 겹쳐 보이지 않게 초기화
+    setInterestStatus('idle');
 
     // 분석된 종목 목록을 검색 시점에 다시 받아온다 — 마운트 시 한 번만 받아두면, 그 이후
     // 서버에 새로 추가된 종목(주도주분석.py 일괄 실행 등)을 모르고 있다가 이미 분석돼
@@ -315,12 +396,20 @@ export default function StockAnalysis({ target }) {
         companyData
           ? <BalanceSheetView data={companyData} />
           : <div className="tab-placeholder">종목을 검색하세요</div>
+      ) : active === 'interest' ? (
+        !companyData ? (
+          <div className="tab-placeholder">종목을 검색하세요</div>
+        ) : interestStatus === 'loading' ? (
+          <div className="tab-placeholder">불러오는 중...</div>
+        ) : interestStatus === 'error' ? (
+          <div className="tab-placeholder">조회 중 오류가 발생했습니다.</div>
+        ) : interestData ? (
+          <MarketInterestView data={interestData} />
+        ) : (
+          <div className="tab-placeholder">불러오는 중...</div>
+        )
       ) : (
-        <div className="tab-placeholder">
-          {active
-            ? `${SECTIONS.find(s => s.key === active).label} — 준비 중입니다`
-            : '항목을 선택하세요'}
-        </div>
+        <div className="tab-placeholder">항목을 선택하세요</div>
       )}
     </div>
   );

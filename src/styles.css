@@ -452,6 +452,7 @@ tbody tr.chart-row td { text-align: left; white-space: normal; padding: 0; }
 .fin-row:last-child { border-bottom: none; }
 .fin-label { font-size: 14px; font-weight: 600; color: var(--c-heading); }
 .fin-value { font-size: 14px; color: var(--c-muted); font-variant-numeric: tabular-nums; }
+.fin-dates { padding-bottom: 14px; font-size: 12px; color: var(--c-muted); line-height: 1.6; }
 
 /* ── 종목 분석 — 재무상태표/손익계산서 연도별 추이 차트 ───────────────── */
 .trend-chart-block {

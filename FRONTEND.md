@@ -18,8 +18,24 @@
   축소 — 안 줄이면 2열 폭에서 "기업개요" 같은 4글자 라벨도 줄바꿈되어 깨짐, 직접 확인함).
   클릭하면 `active` 상태만 토글되고(파란 테두리+파란 글자) 해당 버튼의 뷰가 표시됨. 기존
   4번째 탭(현금흐름표)이 시장관심도로 교체됐고(`key: 'interest'`, 2026-07-11), 이후 기업개요
-  바로 다음(2번째)로 순서 이동(2026-07-11) — 아직 내용은 "준비 중" placeholder(별도 뷰
-  컴포넌트 없이 기본 placeholder 분기로 떨어짐). 기업개요는 아래 별도 절 참고.
+  바로 다음(2번째)로 순서 이동(2026-07-11). 기업개요는 아래 별도 절 참고, 시장관심도는
+  "MarketInterestView" 절 참고.
+- **시장관심도(`MarketInterestView`, 2026-07-11 도입)**: `active === 'interest'`가 되면
+  `companyData`(이미 검색된 종목)의 `stock_code`/`name`으로 `/api/getStockMarketInterest`를
+  **탭을 처음 열 때만** 지연 fetch(`interestData` state가 비어있을 때만 요청 — 다른 탭
+  갔다 와도 같은 종목이면 재조회 안 함, 검색어를 바꿔 새로 검색하면 `runSearch()`가
+  `interestData`를 `null`로 초기화해 다시 fetch되게 함). 세 구획으로 표시:
+  1. **RS Score 최근 10주 추이** — "핫한 테마"/"카테고리 TOP5 추이"에 쓰던 `.cat-trend-wrap`/
+     `.cat-trend-table`(가로 스크롤 + 왼쪽 라벨 열 고정) 패턴을 그대로 재사용해 새 CSS 없이
+     구현 — 헤더 행은 주차별 기준일(`asOfDate`, `MM/DD`), 본문 행은 RS Score 값 1줄. 그 주
+     계산 대상에서 빠졌던 주(신규상장 등)는 `-`로 표시.
+  2. **최근 15거래일 등락률 상위 50 등장** — `.fin-card`/`.fin-row`(기업개요·재무제표
+     탭과 같은 카드형 라벨-값 패턴)로 등장 횟수를, 그 아래 `.fin-dates`(신설, 작은 글씨
+     회색)로 등장 날짜 목록을 쉼표로 나열.
+  3. **카테고리 + 카테고리 TOP5 등장** — 같은 `.fin-card` 안에 이 종목의 현재 카테고리
+     (`api/getStockMarketInterest.js`가 `ai_analysis` 1순위·`rs_category_cache` 2순위로
+     찾은 값, 못 찾으면 "미분류")와, 그 카테고리가 최근 15거래일 등락률 TOP5 카테고리에
+     든 횟수·날짜를 표시.
 - **`target` prop으로 외부에서 검색 트리거**(2026-06-28 추가) — 거래대금·등락률 표의 "이동"
   버튼(`Tables.jsx`)이 `App.jsx`의 `stockJumpTarget` state를 채우면 그 값이 `target`으로
   전달돼, `useEffect([target])`가 검색창에 그 종목명을 채우고 검색을 자동 실행(`active`도
