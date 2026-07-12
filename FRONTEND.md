@@ -48,6 +48,10 @@
   (사용자 제보 — "주도주분석.py 미리 돌려놔도 검색이 바로 안 보임"). `api/analyzeCompany.js`
   쪽도 이미 최신이면 재분석 없이 즉시 반환하도록 같이 고쳐서(ARCHITECTURE.md 참고) 이중으로
   방지.
+- **검색어 대소문자 무시**(2026-07-12): `runSearch(name)`의 `companyList` 매칭을
+  `c.name.toLowerCase()`로 비교 — 정확 일치를 부분일치보다 먼저 확인하는 순서는 그대로
+  유지(짧은 회사명이 우연히 부분문자열로 포함돼 잘못 매칭되는 걸 막기 위해, `종목분석.py`의
+  `find_corp_code()`와 동일한 원칙, [HISTORY.md](HISTORY.md) 2026-07-12 항목 참고).
 - **손익계산서·재무상태표 연동**(2026-06-25): `IncomeStatementView`/`BalanceSheetView`가
   `companyData`(검색으로 받은 종목분석.py 출력)를 `data` prop으로 받아 `annual_financials`의
   가장 최근 연도 값으로 계산함(`lastAnnual()`). 손익계산서는 매출액·영업이익·영업이익률(영업이익

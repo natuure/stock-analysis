@@ -295,7 +295,12 @@ export default function StockAnalysis({ target }) {
       .then(({ list }) => {
         const freshList = list || [];
         setCompanyList(freshList);
-        const match = freshList.find(c => c.name === name) || freshList.find(c => c.name.includes(name));
+        // 대소문자 구분 없이 매칭(2026-07-12) — 정확 일치를 부분일치보다 먼저 확인해야
+        // 짧은 회사명이 입력 문자열에 우연히 포함돼 잘못 매칭되는 걸 막는다(find_corp_code()의
+        // 대소문자 무시 정확 일치 우선 원칙과 동일, 종목분석.py 참고).
+        const nameLower = name.toLowerCase();
+        const match = freshList.find(c => c.name.toLowerCase() === nameLower)
+          || freshList.find(c => c.name.toLowerCase().includes(nameLower));
         if (match) {
           return fetch(`/api/getCompanyOverview?code=${match.stock_code}`)
             .then(r => r.json())

@@ -167,8 +167,14 @@ CORP_NAME_ALIASES = {
 
 
 def find_corp_code(name, corp_map):
+    """반환값에 정식 회사명(DART corp_map의 key)을 'name'으로 포함시켜 돌려준다 — 호출부가
+    사용자가 입력한 원문 대소문자(예: 'sk하이닉스')가 아니라 이 정식명을 저장에 써야
+    company_analysis.name이 ai_analysis 등 다른 컬렉션의 표기와 어긋나지 않는다(2026-07-12,
+    SK하이닉스가 과거 소문자로 저장돼 "시장관심도" 카테고리 매칭이 실패한 사고 이후 수정 —
+    당시엔 이 함수가 corp_map의 값(corp_code/stock_code)만 반환하고 정식명은 버렸었음).
+    api/_dart.js의 findCorpCode()와 동일한 알고리즘·동일한 반환 형태(정식명 포함)."""
     if name in corp_map:
-        return corp_map[name]
+        return {'name': name, **corp_map[name]}
     # 대소문자만 다른 정확 일치(예: 'sk하이닉스' 입력 vs 'SK하이닉스' 정식명)를 부분일치보다
     # 먼저 확인한다 — 안 그러면 짧은 회사명이 입력 문자열에 우연히 포함돼 잘못 매칭될 수 있음
     # (직접 확인, 2026-06-25: 'sk하이닉스' → 부분일치만 썼을 때 전혀 무관한 '이닉스'(452400)에
@@ -176,16 +182,16 @@ def find_corp_code(name, corp_map):
     name_lower = name.lower()
     for k, v in corp_map.items():
         if k.lower() == name_lower:
-            return v
+            return {'name': k, **v}
     alias = CORP_NAME_ALIASES.get(name)
     if alias and alias in corp_map:
-        return corp_map[alias]
+        return {'name': alias, **corp_map[alias]}
     candidates = [(k, v) for k, v in corp_map.items() if name_lower in k.lower() or k.lower() in name_lower]
     if not candidates:
         return None
     # 부분일치 후보가 여럿이면 입력값과 길이 차이가 가장 작은(가장 가까운) 회사명을 선택.
     candidates.sort(key=lambda kv: abs(len(kv[0]) - len(name)))
-    return candidates[0][1]
+    return {'name': candidates[0][0], **candidates[0][1]}
 
 
 # ── KIS 현재가·시가총액·발행주식수 조회 ───────────────────────────────────────
@@ -504,7 +510,10 @@ def main():
         return
     print(f'  → 최신 보고서: {latest_year}년 {latest_label}')
 
-    analyze_one(name, corp, latest_year, latest_code, latest_label)
+    # 저장에는 사용자가 입력한 원문(name)이 아니라 find_corp_code()가 찾아낸 정식 회사명
+    # (corp['name'])을 쓴다 — 안 그러면 대소문자·표기가 다른 입력이 company_analysis.name에
+    # 그대로 박혀 ai_analysis 등 다른 컬렉션의 정식명과 어긋난다(위 SK하이닉스 사고 참고).
+    analyze_one(corp['name'], corp, latest_year, latest_code, latest_label)
 
 
 if __name__ == '__main__':

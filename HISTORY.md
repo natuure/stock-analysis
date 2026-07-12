@@ -60,6 +60,18 @@
   452400 문서가 `이닉스`의 재무 데이터를 담은 채 이름만 `sk하이닉스`로 잘못 저장됐던 걸
   발견 즉시 삭제하고 재실행. `find_corp_code()`에 대소문자 무시 정확 일치 단계를 부분일치보다
   먼저 보도록 추가해 재발 방지 ([DATA_PIPELINE.md](DATA_PIPELINE.md) 참고)
+- **종목분석.py corp_code는 맞게 찾아도 저장되는 이름 표기가 입력 원문 그대로 남는 잔여 버그**
+  (2026-07-12 수정): 위 2026-06-25 수정으로 회사(corp_code/stock_code) 자체는 항상 올바르게
+  찾게 됐지만, `find_corp_code()`가 매칭에 쓴 정식 회사명(대소문자 무시 일치로 찾아낸 키)을
+  버리고 corp_code/stock_code 값만 반환하고 있어서, `main()`이 여전히 사용자가 타이핑한 원문
+  (`sk하이닉스`, 소문자)을 `company_analysis.name`에 그대로 저장했다 — "종목 분석" 탭
+  "시장관심도"가 `ai_analysis`의 `SK하이닉스`(대문자)와 문자열 정확 일치로 카테고리를 찾다가
+  실패해 "미분류"로 표시되는 것을 사용자가 발견. `find_corp_code()`가 이제 정식 회사명을
+  `{'name': ..., **corp_map값}` 형태로 함께 반환하고, `main()`은 이 정식명으로 저장한다
+  (`api/_dart.js`의 `findCorpCode()`는 처음부터 이렇게 정식명을 반환하고 있어서 동일하게
+  맞춤). 기존에 잘못 저장돼 있던 `company_analysis/000660`의 `name`도 `SK하이닉스`로 직접
+  정정. 겸사겸사 `StockAnalysis.jsx`의 검색창 매칭도 대소문자 무시로 바꿈([FRONTEND.md](FRONTEND.md),
+  [DATA_PIPELINE.md](DATA_PIPELINE.md) 참고)
 - **일지테크 매출액·기본주당이익 null 누락 버그** (2026-06-25 수정): `python 종목분석.py
   일지테크` 실행 결과 영업이익은 정상 추출됐는데 매출액·EPS만 `null`로 나옴 — DART 원본을
   직접 조회해보니 매출액은 `매출액`/`영업수익`이 아니라 `수익(매출액)`으로, EPS는 기존
