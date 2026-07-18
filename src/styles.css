@@ -341,7 +341,8 @@ tbody tr.chart-row td { text-align: left; white-space: normal; padding: 0; }
   text-align: center; font-size: 11px; font-weight: 700;
   color: var(--c-muted); padding: 4px 0 8px;
 }
-.cal-day-wrap { display: flex; justify-content: center; padding: 2px 0; }
+.cal-day-wrap { display: flex; flex-direction: column; align-items: center; padding: 2px 0; }
+.cal-holiday { font-size: 9px; font-weight: 700; color: var(--c-up); line-height: 1.4; }
 .cal-day {
   position: relative; width: 32px; height: 32px;
   display: flex; align-items: center; justify-content: center;

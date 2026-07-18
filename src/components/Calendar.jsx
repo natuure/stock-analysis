@@ -37,10 +37,12 @@ export default function Calendar({ year, month, selected, onMove, onDayClick, on
       const realDate = new Date(year, month, dayNum);
       const other    = dayNum < 1 || dayNum > lastDate;
       const iso = `${realDate.getFullYear()}-${String(realDate.getMonth() + 1).padStart(2, '0')}-${String(realDate.getDate()).padStart(2, '0')}`;
+      const hasData = !other && dateSet.has(iso);
       days.push({
         d: realDate.getDate(), iso: other ? null : iso, other,
         isToday: !other && iso === todayStr,
-        hasData: !other && dateSet.has(iso),
+        hasData,
+        isHoliday: !other && !hasData && iso < todayStr,
         isSel:   !other && iso === selected,
       });
     }
@@ -92,6 +94,7 @@ export default function Calendar({ year, month, selected, onMove, onDayClick, on
             return (
               <div className="cal-day-wrap" key={`${wi}-${di}`}>
                 <div className={cls} onClick={onClick}>{day.d}</div>
+                {day.isHoliday && <div className="cal-holiday">휴장</div>}
               </div>
             );
           });
