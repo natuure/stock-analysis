@@ -53,15 +53,16 @@ function EtfRankRows({ rows }) {
   );
 }
 
-// 주간뷰(카테고리 비중 도넛 ~ 주간 종목 데이터 표 사이)에 삽입되는 ETF 등락률 상위 15 표.
-// weekly_indices.etfRank는 주간분석.py가 vol/rate와 같이 채우므로 별도 API 호출 없이
-// weekVolRate에 실려 오는 값을 그대로 받는다.
+// 주간뷰·월간뷰(카테고리 비중 도넛 ~ 종목 데이터 표 사이)에 삽입되는 ETF 등락률 상위 15 표.
+// weekly_indices/monthly_indices.etfRank는 주간분석.py/월간분석.py가 vol/rate와 같이
+// 채우므로 별도 API 호출 없이 weekVolRate/monthVolRate에 실려 오는 값을 그대로 받는다.
+// week prop은 라벨용 문자열이라 주차("2026-W28")·달("2026-07") 어느 쪽이든 그대로 표시된다.
 export default function EtfRankTable({ etfRank, week, lastTradingDate }) {
   if (!etfRank || etfRank.length === 0) {
     return (
       <>
         <h2 className="sec-title" style={{ marginTop: 36 }}>ETF 등락률 상위 15</h2>
-        <div className="tab-placeholder">이번 주 ETF 랭킹 데이터가 아직 없습니다.</div>
+        <div className="tab-placeholder">해당 기간 ETF 랭킹 데이터가 아직 없습니다.</div>
       </>
     );
   }

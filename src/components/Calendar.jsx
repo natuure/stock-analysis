@@ -11,7 +11,7 @@ function getISOWeek(date) {
   return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
 }
 
-export default function Calendar({ year, month, selected, onMove, onDayClick, onNoDataClick, onWeekClick, serverDates = [], weeklyIdx = {}, weekSelected = null }) {
+export default function Calendar({ year, month, selected, onMove, onDayClick, onNoDataClick, onWeekClick, onMonthClick, serverDates = [], weeklyIdx = {}, weekSelected = null, monthlyIdx = {}, monthSelected = null }) {
   const dates   = JSON.parse(ls('analysis_dates') || '[]');
   const dateSet = new Set([...dates, ...serverDates]);
 
@@ -57,10 +57,22 @@ export default function Calendar({ year, month, selected, onMove, onDayClick, on
   // 한 주의 평일 5칸이 전부 다른 달이면(그 주의 거래일이 이번 달에 하나도 없음) 행 자체를 드롭
   weeks = weeks.filter(week => week.days.some(day => !day.other));
 
+  const monthKey  = `${year}-${String(month + 1).padStart(2, '0')}`;
+  const monthIdx  = monthlyIdx[monthKey];
+  const hasMonthIdx = !!(monthIdx && monthIdx.kospi && monthIdx.kosdaq);
+  let monthTitleCls = 'cal-title';
+  if (hasMonthIdx) monthTitleCls += ' clickable';
+  if (hasMonthIdx && monthKey === monthSelected) monthTitleCls += ' selected';
+
   return (
     <div className="cal-card">
       <div className="cal-header">
-        <div className="cal-title">{year}년 {MONTHS[month]}</div>
+        <div
+          className={monthTitleCls}
+          onClick={hasMonthIdx ? () => onMonthClick && onMonthClick(monthKey) : undefined}
+        >
+          {year}년 {MONTHS[month]}
+        </div>
         <div style={{ display: 'flex', gap: 4 }}>
           <button className="cal-nav" onClick={() => onMove(-1)}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

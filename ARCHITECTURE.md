@@ -32,6 +32,9 @@ src/                                 api/getData.js                  MongoDB Atl
                                          전용, DART 추출·corp_code
                                          조회, 라우트 아님)
 
+  (monthly_indices 컬렉션: _id = "YYYY-MM", weekly_indices와 동일 구조 — 2026-07-26 도입,
+   api/getData.js가 ?month= 로 조회)
+
 Python (로컬 실행, 고정 IP)
   뉴스분석.py   ← FinanceDataReader 수집 + 토스 캔들 캐싱(폴백용) + Naver 뉴스 수집 + stock_data 저장
   저장분석.py   ← ai_analysis 저장
@@ -39,6 +42,10 @@ Python (로컬 실행, 고정 IP)
                   KIS 통합 보강 재사용, 2026-06-27) + 주간 ETF 등락률 상위 15(weekly_indices.etfRank,
                   원래 별도 ETF분석.py였던 랭킹 계산 로직을 흡수, 2026-07-06) 계산 + weekly_indices
                   저장 (메인 흐름과 독립)
+  월간분석.py   ← 코스피/코스닥 월간 변동률 + 월간 거래대금/등락률 상위 50 + 월간 ETF 등락률
+                  상위 15(monthly_indices.etfRank) 계산 + monthly_indices 저장(주간분석.py를
+                  월 단위로 그대로 옮긴 구조, 뉴스분석.py·주간분석.py 임포트해 재사용,
+                  2026-07-26 도입, 메인 흐름과 독립)
   rs랭킹.py     ← 전종목 RS Score 백분위 90 이상 랭킹 계산(뉴스분석.py·저장분석.py·주간분석.py
                   임포트해 유니버스·카테고리 목록·attach_categories() 재사용) + rs_ranking 컬렉션
                   단일 문서(_id='latest') 저장(2026-07-11 도입, 같은 날 주간분석.py에서 분리 —
@@ -65,8 +72,9 @@ Python (로컬 실행, 고정 IP)
 ```
 /
 ├── api/
-│   ├── getData.js              # GET ?date= → stock_data 조회 / ?week= → weekly_indices 조회
-│   │                             (vol/rate 포함) / 둘 다 없음 → 날짜 목록 + weeklyIndices 반환
+│   ├── getData.js              # GET ?date= → stock_data 조회 / ?week= → weekly_indices 조회 /
+│   │                             ?month= → monthly_indices 조회(vol/rate 포함, 2026-07-26 추가) /
+│   │                             셋 다 없음 → 날짜 목록 + weeklyIndices + monthlyIndices 반환
 │   ├── getAnalysis.js          # GET ?date= → ai_analysis 조회
 │   ├── analyzeStocks.js        # Claude API 프록시 (현재 미사용)
 │   ├── candles.js              # GET ?symbol=&date= → KIS Open API 직접 호출(실시간), 실패 시 candles 캐시 폴백
@@ -95,7 +103,8 @@ Python (로컬 실행, 고정 IP)
 │   ├── styles.css
 │   └── components/
 │       ├── Header.jsx
-│       ├── Calendar.jsx     # serverDates prop 추가 (MongoDB 날짜 표시), 주차(W##) 칸
+│       ├── Calendar.jsx     # serverDates prop 추가 (MongoDB 날짜 표시), 주차(W##) 칸,
+│       │                     달 제목("YYYY년 M월") 클릭(monthlyIdx 있을 때만, 2026-07-26 추가)
 │       ├── Tables.jsx       # 거래대금·등락률 테이블, 행 클릭 시 그 표 내부에서 차트 패널을 인라인으로 펼침/접음(독립 상태)
 │       ├── StockChartPanel.jsx  # 종목 클릭 시 표 행 아래에 인라인으로 펼치는 일봉/주봉 캔들 차트 패널(모달 아님)
 │       ├── Analysis.jsx     # ThemeTable + ThemeCategoryTrend(최근 14일 카테고리 추이) + AiPanels + N파일
@@ -103,9 +112,10 @@ Python (로컬 실행, 고정 IP)
 │       │                       4버튼. 시장관심도(MarketInterestView, 2026-07-11 도입)는 api/getStockMarketInterest.js를
 │       │                       탭을 처음 열 때만 지연 fetch — RS Score 10주 추이 + 등락률 상위50 등장 + 카테고리
 │       │                       TOP5 등장을 보여줌
-│       ├── EtfRankTable.jsx   # 주간뷰(카테고리 비중 도넛 ~ 주간 종목 데이터 표 사이)에 삽입되는
-│       │                       ETF 등락률 상위 15 표 — 별도 탭이 아니라 weekVolRate.etfRank를 그대로 받아
-│       │                       렌더링만 함(2026-07-04 도입, 2026-07-06 별도 탭에서 이 위치로 이동)
+│       ├── EtfRankTable.jsx   # 주간뷰·월간뷰(카테고리 비중 도넛 ~ 종목 데이터 표 사이)에 삽입되는
+│       │                       ETF 등락률 상위 15 표 — 별도 탭이 아니라 weekVolRate/monthVolRate의
+│       │                       etfRank를 그대로 받아 렌더링만 함(2026-07-04 도입, 2026-07-06 별도
+│       │                       탭에서 이 위치로 이동, 2026-07-26 월간뷰에도 공용으로 재사용)
 │       ├── RsRankingView.jsx  # 상단 "RS랭킹" 탭의 내용 — /api/getRsRanking을 자체 fetch(StockAnalysis.jsx와
 │       │                       같은 패턴)해 RsRankTable에 넘김(2026-07-11 도입)
 │       ├── RsRankTable.jsx    # RS Score 랭킹 카드형 표 — rsRank 배열(RS Score 백분위 90 이상, 이미
@@ -119,6 +129,9 @@ Python (로컬 실행, 고정 IP)
 ├── 저장분석.py              # ai_analysis MongoDB 저장
 ├── 주간분석.py              # 코스피/코스닥 주간 변동률 + 주간 거래대금/등락률 상위 50 + 주간 ETF 등락률
 │                             상위 15(etfRank, 2026-07-06부터 흡수) → weekly_indices 저장
+├── 월간분석.py              # 코스피/코스닥 월간 변동률 + 월간 거래대금/등락률 상위 50 + 월간 ETF 등락률
+│                             상위 15(etfRank) → monthly_indices 저장(주간분석.py의 월간 버전,
+│                             뉴스분석.py·주간분석.py 임포트해 재사용, 2026-07-26 도입)
 ├── rs랭킹.py                # 전종목 RS Score 백분위 90 이상 랭킹 → MongoDB rs_ranking 컬렉션
 │                             단일 문서(_id='latest') 저장(2026-07-11 도입, 같은 날 주간분석.py에서
 │                             분리 — 뉴스분석.py·저장분석.py·주간분석.py를 import해 재사용)
@@ -151,6 +164,7 @@ Python (로컬 실행, 고정 IP)
 | `candles` | 종목별 토스 일봉 캔들 캐시 (KIS 실패 시 폴백용) | `{ _id: "종목코드_YYYY-MM-DD", candles: [...] }` (해당일 거래대금/등락률 상위 종목만) |
 | `kis_token` | KIS 접근토큰 캐시 (1분당 1회 발급 제한 대응) | `{ _id: "token", accessToken, expiresAt }` 단일 문서 |
 | `weekly_indices` | 주간 코스피/코스닥 변동률 + 주간 거래대금/등락률 상위 50(주간분석.py가 채움, vol/rate/lastTradingDate는 2026-06-27 추가라 그 이전 주차에는 없을 수 있음) + 주간 ETF 등락률 상위 15(`etfRank`, 2026-07-04 도입, 2026-07-06부터 `주간분석.py`가 직접 채움 — 그 이전 주차에는 없을 수 있음). **`rsRank` 필드는 더 이상 채우지 않음**(2026-07-11 도입 당일에만 잠깐 여기 있었고, 같은 날 `rs_ranking` 컬렉션으로 옮김 — 2026-W28 등 도입 당일에 실행된 문서에는 옛 `rsRank` 필드가 그대로 남아있을 수 있으나 화면에서 더 이상 읽지 않음, [HISTORY.md](HISTORY.md) 참고) | `{ _id: "YYYY-W##", kospi: {...}, kosdaq: {...}, vol: [...50], rate: [...50], lastTradingDate: "YYYY-MM-DD", etfRank: [...15] }` |
+| `monthly_indices` | 월간 코스피/코스닥 변동률 + 월간 거래대금/등락률 상위 50 + 월간 ETF 등락률 상위 15(`etfRank`) — `월간분석.py`가 채움. `weekly_indices`와 완전히 동일한 문서 구조이며 `_id`만 `"YYYY-MM"`(2026-07-26 도입) | `{ _id: "YYYY-MM", kospi: {...}, kosdaq: {...}, vol: [...50], rate: [...50], lastTradingDate: "YYYY-MM-DD", etfRank: [...15] }` |
 | `rs_ranking` | 두 종류 문서가 공존(2026-07-11 도입). **① `_id: "latest"`**: RS Score 백분위 90 이상 종목만(+카테고리) — `rs랭킹.py`가 매 실행마다 덮어씀, "RS랭킹" 탭(`api/getRsRanking.js`)이 읽음. **② `_id: "YYYY-W##"`(주차별 히스토리)**: 그 주 계산 성공한 전종목(임계값 무관, 카테고리 없음) — `api/getStockMarketInterest.js`가 특정 종목의 10주 추이를 조회할 때 읽음 | `{ _id: "latest", asOfDate, weekKey, rsRank: [{rank, code, name, rsScore, 카테고리?, 신규카테고리후보?}], updatedAt }` 또는 `{ _id: "YYYY-W##", asOfDate, weekKey, scores: [{code, name, rsScore}], updatedAt }` |
 | `rs_category_cache` | RS Score 랭킹 카테고리 영속 캐시 — `ai_analysis`에 한 번도 등장한 적 없는 RS 전용 종목의 분류를 Claude Code가 조사해 저장, 다음 실행 이후로도 재사용(2026-07-11 도입, `rs랭킹.py`의 `rs_ranking()`이 읽음, [DATA_PIPELINE.md](DATA_PIPELINE.md) "RS 랭킹 카테고리 영속 캐시" 절 참고). `카테고리`는 `저장분석.VALID_CATEGORIES`(28개)를 그대로 따름 — 조회 시점에 그 목록에 없는 값(카테고리 개편으로 무효화)은 자동 제외돼 재분류 대상으로 복귀 | `{ _id: "종목명", code, 카테고리, 신규카테고리후보?, classifiedAt: "YYYY-MM-DD", source: "claude_code_manual" }` |
 | `company_analysis` | 종목별 DART 재무제표 + KIS 현재가 (종목분석.py 수동 실행, `주도주분석.py` 일괄 실행, **또는** `api/analyzeCompany.js` 즉석분석이 채움, "종목 분석" 탭용). **`quote`는 채워진 시점에 박힌 값이라 폴백 전용** — 실제 화면에는 `api/getCompanyOverview.js`가 조회 시점에 KIS로 새로 받아온 현재가가 표시됨(2026-06-25) | `{ _id: "종목코드", name, date, corp_code, quote, annual_financials, quarterly_financials, latest_report }` |
@@ -164,7 +178,7 @@ Python (로컬 실행, 고정 IP)
 
 | 엔드포인트 | 메서드 | 용도 |
 |-----------|--------|------|
-| `/api/getData` | GET | date/week 둘 다 없음: 날짜 목록 + weeklyIndices(주차별 kospi/kosdaq/lastTradingDate만, 가벼운 요약) 반환 / date 있음: 해당일 vol+rate+indices 반환 / week 있음: 그 주차의 kospi+kosdaq+vol+rate+lastTradingDate 전체 반환(2026-06-27 추가) |
+| `/api/getData` | GET | date/week/month 셋 다 없음: 날짜 목록 + weeklyIndices(주차별 kospi/kosdaq/lastTradingDate만, 가벼운 요약) + monthlyIndices(달별 동일 요약, 2026-07-26 추가) 반환 / date 있음: 해당일 vol+rate+indices 반환 / week 있음: 그 주차의 kospi+kosdaq+vol+rate+lastTradingDate 전체 반환(2026-06-27 추가) / month 있음: 그 달의 kospi+kosdaq+vol+rate+lastTradingDate 전체 반환(2026-07-26 추가) |
 | `/api/getAnalysis` | GET | `?date=YYYY-MM-DD` → ai_analysis 반환 |
 | `/api/getThemeTrend` | GET | `?days=`(기본 14, 최대 90) → ai_analysis에서 최근 N일의 `거래대금`/`등락률` 배열만 프로젝션해 반환(테마 제외, 날짜 내림차순, 2026-06-28부터 `테마`에서 `거래대금`/`등락률`로 교체) — "거래대금·등락률 분석" 탭의 거래대금·등락률 카테고리 TOP5 추이 표 2개용 |
 | `/api/getRsRanking` | GET | 파라미터 없음 → `rs_ranking` 컬렉션의 단일 문서(`_id='latest'`) 반환(2026-07-11 도입) — "RS랭킹" 탭 전용 |

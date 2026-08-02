@@ -32,10 +32,15 @@ import FinanceDataReader as fdr
 from dotenv import load_dotenv
 from pymongo import MongoClient
 
+import json
+
 import 뉴스분석  # KIS 통합(KRX+NXT) 보강 로직 재사용 — get_kis_token/_fetch_kis_daily/
                   # fetch_market_data/임계값 상수. import만 해도 main()은 실행 안 됨
                   # (if __name__=='__main__' 가드, 주도주분석.py가 종목분석.py를 임포트하는
                   # 기존 패턴과 동일).
+import 저장분석  # 주간 digest의 mood 분류를 일간과 동일한 기준으로 재사용 —
+                  # classify_mood/MOOD_STRONG/MOOD_MILD. import만 해도 main()은 실행 안 됨
+                  # (동일한 if __name__=='__main__' 가드 패턴).
 
 if sys.stdout.encoding != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -440,6 +445,69 @@ def etf_weekly_rank(db, top=15):
     return target_week, etf_rank
 
 
+# ── 주간 digest 생성 (저장분석.py의 일간 digest와 같은 방식, 2026-07-26 추가) ──────────
+# 일간 digest(build_digest/save_digest)는 Claude/Codex가 만든 analysis.테마/상승원인을
+# 그대로 담지만, 주간분석.py는 AI를 호출하지 않아 그 데이터 자체가 없다. 대신 이미 계산한
+# entry['vol'](거래대금 top50)의 changeRate로 mood/avg_change_rate/up_ratio를 저장분석.py와
+# 동일한 기준(classify_mood/MOOD_STRONG/MOOD_MILD)으로 구하고, top_movers는 상승원인 없이
+# 종목명·카테고리(attach_categories로 이미 채워진 값)·changeRate만 담는다.
+
+WEEKLY_TOP_MOVERS_PER_LIST = 6  # 저장분석.TOP_MOVERS_PER_LIST와 동일한 개수
+
+
+def compute_weekly_market_stats(vol):
+    rates = [s['changeRate'] for s in vol if 'changeRate' in s]
+    if not rates:
+        return None, None
+    avg_change_rate = sum(rates) / len(rates)
+    up_ratio = sum(1 for r in rates if r > 0) / len(rates)
+    return round(avg_change_rate, 2), round(up_ratio, 2)
+
+
+def pick_weekly_top_movers(vol, rate, count=WEEKLY_TOP_MOVERS_PER_LIST):
+    movers = []
+    seen = set()
+    for lst in (vol, rate):
+        for s in lst[:count]:
+            name = s.get('name')
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            movers.append({
+                '종목명': name,
+                '카테고리': s.get('카테고리', ''),
+                'changeRate': s.get('changeRate'),
+            })
+    return movers
+
+
+def build_weekly_digest(week, entry):
+    vol, rate = entry.get('vol', []), entry.get('rate', [])
+    avg_change_rate, up_ratio = compute_weekly_market_stats(vol)
+    mood = 저장분석.classify_mood(avg_change_rate, up_ratio) if avg_change_rate is not None else '정보없음'
+
+    return {
+        'week': week,
+        'lastTradingDate': entry.get('lastTradingDate'),
+        'kospi': entry.get('kospi'),
+        'kosdaq': entry.get('kosdaq'),
+        'mood': mood,
+        'avg_change_rate': avg_change_rate,
+        'up_ratio': up_ratio,
+        'top_movers': pick_weekly_top_movers(vol, rate),
+    }
+
+
+def save_weekly_digest(week, entry):
+    digest = build_weekly_digest(week, entry)
+    os.makedirs('digests', exist_ok=True)
+    out_path = os.path.join('digests', f'weekly_digest_{week}.json')
+    with open(out_path, 'w', encoding='utf-8') as f:
+        json.dump(digest, f, ensure_ascii=False, indent=2)
+    print(f'주간 digest 저장 완료: {out_path}')
+    print(f"mood={digest['mood']} avg_change_rate={digest['avg_change_rate']} up_ratio={digest['up_ratio']}")
+
+
 def save_to_mongodb(week, entry):
     if not MONGODB_URI:
         print('[경고] MONGODB_URI 없음 — MongoDB 저장 건너뜀')
@@ -508,6 +576,7 @@ def main():
             print('[경고] KIS 보강 실패 — 이번 실행에서는 주간 거래대금/등락률을 저장하지 않습니다.')
 
     save_to_mongodb(week, entry)
+    save_weekly_digest(week, entry)
 
     print('주간 ETF 등락률 상위 15 산출 중...')
     etf_client = MongoClient(MONGODB_URI) if MONGODB_URI else None

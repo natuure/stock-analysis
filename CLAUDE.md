@@ -5,11 +5,11 @@
 > 새 내용을 추가할 일이 생기면 해당 주제의 파일(없으면 새 `.md` 파일)에 쓰고, 이 파일에는
 > 표에 한 줄만 추가한다.
 
-> ⚠️ **작업할 때는 아래 표가 가리키는 파일 안의 세부 규칙(필드명, 글자수 제한, 24개
+> ⚠️ **작업할 때는 아래 표가 가리키는 파일 안의 세부 규칙(필드명, 글자수 제한, 30개
 > 카테고리 목록, 저장 형식 등)을 실제로 열어서 확인하고 그대로 지킬 것.** 이름·구조가
 > 얼추 맞아 보인다고 기억이나 짐작으로 채우지 말고, 특히 분석 JSON
 > (`분석결과_YYYY-MM-DD.json`)을 새로 생성하거나 수정할 때는 해당 필드의 규칙 절
-> (예: `테마` 배열 규칙, `카테고리` 24개 값, `핵심재료` 글자수)을 매번 다시 읽고 대조한
+> (예: `테마` 배열 규칙, `카테고리` 30개 값, `핵심재료` 글자수)을 매번 다시 읽고 대조한
 > 뒤 작성한다 — 규칙을 놓치면 `저장분석.py`가 거부하거나(카테고리 누락 등), 통과되더라도
 > 화면에 깨져 보이는(글자수 초과로 레이아웃 깨짐, 필드명 오기로 빈칸 표시 등) 방식으로만
 > 뒤늦게 드러난다(2026-07-02, `테마`/`핵심재료` 필드명·글자수 규칙을 확인 없이 채웠다가
@@ -24,7 +24,7 @@
 | 로컬 빌드·개발 환경, 자주 쓰는 명령어(npm/python) | [DEV.md](DEV.md) |
 | 이 프로젝트가 무엇을 하는 앱인지(전체 기능 설명 — 달력·주차, 카테고리 분류, 종목 분석 탭 등) | [FEATURES.md](FEATURES.md) |
 | 배포 구조, 폴더/파일 구조, MongoDB 스키마, API 엔드포인트, 환경변수 확인 | [ARCHITECTURE.md](ARCHITECTURE.md) |
-| 전체 데이터 흐름 요약, `뉴스분석.py`/`저장분석.py`/`주간분석.py`/`종목분석.py`/`주도주분석.py` 사용법, FDR·토스·DART 데이터 수집 로직, vol/rate/indices/weekly_indices 데이터 구조, AI 분석 JSON 형식·`테마`/`카테고리` 작성 규칙, 캐시 버전(`CACHE_VERSION`) 규칙 | [DATA_PIPELINE.md](DATA_PIPELINE.md) |
+| 전체 데이터 흐름 요약, `뉴스분석.py`/`저장분석.py`/`주간분석.py`/`월간분석.py`/`종목분석.py`/`주도주분석.py` 사용법, FDR·토스·DART 데이터 수집 로직, vol/rate/indices/weekly_indices/monthly_indices 데이터 구조, AI 분석 JSON 형식·`테마`/`카테고리` 작성 규칙, 캐시 버전(`CACHE_VERSION`) 규칙 | [DATA_PIPELINE.md](DATA_PIPELINE.md) |
 | 화면/컴포넌트 구성(Tables·Analysis·StockChartPanel·IndexSummary·StockAnalysis·CompanyOverviewView), 디자인 토큰, 반응형 규칙 | [FRONTEND.md](FRONTEND.md) |
 | "이거 왜 이렇게 동작하지?" 같은 질문에 대한 빠른 답(의도된 동작 vs 과거 버그) | [FAQ.md](FAQ.md) |
 | 과거에 제거되거나 대체된 기능 이력 | [HISTORY.md](HISTORY.md) |

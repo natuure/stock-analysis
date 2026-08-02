@@ -47,6 +47,9 @@ export default function App() {
   const [weeklyIdx,   setWeeklyIdx]   = useState({});
   const [weekSelected, setWeekSelected] = useState(null);
   const [weekVolRate, setWeekVolRate] = useState(null); // 선택한 주차의 {vol, rate} 또는 null
+  const [monthlyIdx,   setMonthlyIdx]   = useState({});
+  const [monthSelected, setMonthSelected] = useState(null);
+  const [monthVolRate, setMonthVolRate] = useState(null); // 선택한 달의 {vol, rate} 또는 null
   const [themeTrend,  setThemeTrend]  = useState(null);
 
   const volRef  = useRef(null);
@@ -56,9 +59,10 @@ export default function App() {
   useEffect(() => {
     fetch('/api/getData')
       .then(r => r.json())
-      .then(({ dates, weeklyIndices }) => {
+      .then(({ dates, weeklyIndices, monthlyIndices }) => {
         if (dates) setServerDates(dates);
         if (weeklyIndices) setWeeklyIdx(weeklyIndices);
+        if (monthlyIndices) setMonthlyIdx(monthlyIndices);
       })
       .catch(() => {});
 
@@ -83,6 +87,8 @@ export default function App() {
 
   function loadAnalysis(dateISO) {
     setWeekSelected(null);
+    setMonthSelected(null);
+    setMonthVolRate(null);
     const data = loadAnalysisFromStorage(dateISO);
     if (data && data._v === CACHE_VERSION) {
       volRef.current  = data.vol;
@@ -147,6 +153,8 @@ export default function App() {
   const showMain = !!(vol && rate);
   const weekIdx  = weekSelected ? weeklyIdx[weekSelected] : null;
   const weekData = weekIdx && weekIdx.kospi && weekIdx.kosdaq ? weekIdx : null;
+  const monthIdx  = monthSelected ? monthlyIdx[monthSelected] : null;
+  const monthData = monthIdx && monthIdx.kospi && monthIdx.kosdaq ? monthIdx : null;
 
   return (
     <div className="wrap">
@@ -164,10 +172,13 @@ export default function App() {
             serverDates={serverDates}
             weeklyIdx={weeklyIdx}
             weekSelected={weekSelected}
+            monthlyIdx={monthlyIdx}
+            monthSelected={monthSelected}
             onWeekClick={(weekKey) => {
               setVol(null); setRate(null); setDate(null);
               setIndices(null); setAnalysisExcel(null); setAiAnalysis(null);
               setCalSelected(null);
+              setMonthSelected(null); setMonthVolRate(null);
               const idx = weeklyIdx[weekKey];
               const valid = idx && idx.kospi && idx.kosdaq ? weekKey : null;
               setWeekSelected(valid);
@@ -181,11 +192,29 @@ export default function App() {
                   .catch(() => {});
               }
             }}
+            onMonthClick={(monthKey) => {
+              setVol(null); setRate(null); setDate(null);
+              setIndices(null); setAnalysisExcel(null); setAiAnalysis(null);
+              setCalSelected(null);
+              setWeekSelected(null); setWeekVolRate(null);
+              const idx = monthlyIdx[monthKey];
+              const valid = idx && idx.kospi && idx.kosdaq ? monthKey : null;
+              setMonthSelected(valid);
+              setMonthVolRate(null); // 이전 달의 표를 먼저 지움(전환 중 잔존 데이터 방지)
+              if (valid) {
+                fetch(`/api/getData?month=${monthKey}`)
+                  .then(r => r.json())
+                  .then(({ vol, rate, etfRank }) => {
+                    if (vol && rate) setMonthVolRate({ vol, rate, etfRank });
+                  })
+                  .catch(() => {});
+              }
+            }}
           />
-          {(weekData || (showMain && indices)) && (
+          {(weekData || monthData || (showMain && indices)) && (
             <IndexSummary
-              indices={weekData || indices}
-              title={weekData ? '금주의 코스피/코스닥' : '오늘의 코스피/코스닥'}
+              indices={weekData || monthData || indices}
+              title={weekData ? '금주의 코스피/코스닥' : monthData ? '이달의 코스피/코스닥' : '오늘의 코스피/코스닥'}
             />
           )}
           {weekData && weekVolRate && (
@@ -211,6 +240,35 @@ export default function App() {
                 onSort={handleSort}
                 onTab={setTab}
                 dateISO={weekIdx?.lastTradingDate}
+                onJumpToStock={jumpToStockAnalysis}
+                showHigh60Rate={false}
+                showCategory
+              />
+            </main>
+          )}
+          {monthData && monthVolRate && (
+            <main>
+              <CategoryPieCarousel
+                vol={monthVolRate.vol} rate={monthVolRate.rate}
+                aiAnalysis={{
+                  거래대금: toWeeklyAiItems(monthVolRate.vol),
+                  등락률: toWeeklyAiItems(monthVolRate.rate),
+                }}
+                date={monthIdx?.lastTradingDate}
+              />
+              <EtfRankTable
+                etfRank={monthVolRate.etfRank}
+                week={monthSelected}
+                lastTradingDate={monthIdx?.lastTradingDate}
+              />
+              <h2 className="sec-title" style={{ marginTop: 36 }}>월간 종목 데이터</h2>
+              <Tables
+                vol={monthVolRate.vol} rate={monthVolRate.rate}
+                sortV={sortV} sortR={sortR}
+                tab={tab}
+                onSort={handleSort}
+                onTab={setTab}
+                dateISO={monthIdx?.lastTradingDate}
                 onJumpToStock={jumpToStockAnalysis}
                 showHigh60Rate={false}
                 showCategory

@@ -9,6 +9,8 @@ package-lock.json
 분석결과/
 종목분석결과/
 백필작업/
+Youtube/
+digests/
 _dart_corp_codes.json
 *.xlsx
 *.xls

@@ -19,7 +19,7 @@ module.exports = async (req, res) => {
   try {
     const db  = await getDb();
     const col = db.collection('stock_data');
-    const { date, week } = req.query;
+    const { date, week, month } = req.query;
 
     if (date) {
       // 특정 날짜 데이터 반환
@@ -36,6 +36,15 @@ module.exports = async (req, res) => {
       const weekDoc = await db.collection('weekly_indices').findOne({ _id: week });
       if (!weekDoc) return res.json({ kospi: null, kosdaq: null });
       const { _id, ...rest } = weekDoc;
+      return res.json(rest);
+    }
+
+    if (month) {
+      // 특정 달 전체 데이터 반환(월간 거래대금/등락률 표용) — 위 ?week= 분기와 완전히 동일한
+      // 패턴. 월간분석.py가 채우는 monthly_indices 컬렉션에서 그대로 조회한다.
+      const monthDoc = await db.collection('monthly_indices').findOne({ _id: month });
+      if (!monthDoc) return res.json({ kospi: null, kosdaq: null });
+      const { _id, ...rest } = monthDoc;
       return res.json(rest);
     }
 
@@ -61,7 +70,17 @@ module.exports = async (req, res) => {
       weeklyIndices[d._id] = { kospi: d.kospi, kosdaq: d.kosdaq, lastTradingDate: d.lastTradingDate };
     });
 
-    return res.json({ dates: docs.map(d => d._id), weeklyIndices });
+    // 달별 코스피/코스닥 변동률 (python 월간분석.py가 채움, 달력 제목("YYYY년 M월") 클릭 가능
+    // 여부 표시용) — monthly_indices의 _id는 "YYYY-MM"이라 문서 수 자체가 적어(월 단위) 위
+    // weeklyIndices와 동일하게 전체를 가볍게 가져온다. vol/rate는 여기서 제외하고 ?month=
+    // 분기에서 클릭한 달만 지연 조회한다(위 weeklyIndices와 동일한 이유).
+    const monthlyDocs = await db.collection('monthly_indices').find({}).toArray();
+    const monthlyIndices = {};
+    monthlyDocs.forEach(d => {
+      monthlyIndices[d._id] = { kospi: d.kospi, kosdaq: d.kosdaq, lastTradingDate: d.lastTradingDate };
+    });
+
+    return res.json({ dates: docs.map(d => d._id), weeklyIndices, monthlyIndices });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
