@@ -22,6 +22,9 @@ python 주간분석.py  ← 아무 때나 실행 가능 (별도 흐름, 위 일�
     ├── FDR로 코스피/코스닥 주간(월~금) 변동률 계산
     ├── 뉴스분석.py를 import해 KIS 통합(KRX+NXT) 보강 재사용 → 주간 거래대금·등락률
     │     상위 50도 같이 계산(2026-06-27 추가) → MongoDB weekly_indices 컬렉션 저장
+    ├── 저장 성공 직후 유튜브카드.generate_weekly_shorts_cards(week, entry) 자동 호출
+    │     → Youtube/{week}/shorts/ 폴더에 9:16 쇼츠 카드 생성(뉴스 분석이 없어 일간과 다른
+    │     카드 구성 — "유튜브카드.py — 주간 쇼츠(9:16) 카드" 절 참고, 2026-08-02 도입)
     └── FDR로 ETF 유니버스(fdr.StockListing('ETF/KR')) + 종목별 주간 등락률 계산
           → 최소 AUM(100억) 필터 후 상위 15 → MongoDB weekly_indices.etfRank로 $set
           (2026-07-04 도입, 원래 별도 ETF분석.py였던 것을 2026-07-06부터 여기로 흡수)
@@ -91,6 +94,19 @@ python 뉴스분석.py   # 장마감 후 실행. 오늘 날짜 기준 KRX 전종
 - 날짜 기준 검색: 파일날짜 ~ 오늘 (3일 이상 지난 경우 파일날짜+3일로 제한)
 - 당일 기사 우선 정렬
 
+> ⚠️ **네이버 오픈API가 2026-08-27 NAVER API HUB로 통합되며 엔드포인트·인증 헤더가
+> 바뀜** — 기존 `https://openapi.naver.com/v1/search/news.json` +
+> `X-Naver-Client-Id`/`X-Naver-Client-Secret` 헤더 조합은 HUB에서 새로 발급한 키에는
+> 통하지 않고 401(`NID AUTH Result Invalid`)만 반환한다(사용자가 HUB 콘솔에서 새
+> `NAVER_CLIENT_ID`/`NAVER_CLIENT_SECRET`을 발급받아 `.env.local`에 반영했는데도 계속
+> 401이 나서 발견 — 키 값 자체는 문제 없었고 호출 방식이 구버전이었던 것). 새 엔드포인트는
+> `https://naverapihub.apigw.ntruss.com/search/v1/news`, 헤더는
+> `X-NCP-APIGW-API-KEY-ID`/`X-NCP-APIGW-API-KEY`(값은 기존과 동일하게 `.env.local`의
+> `NAVER_CLIENT_ID`/`NAVER_CLIENT_SECRET`을 그대로 씀)로 바꿔야 인증된다 — 응답 JSON
+> 구조(`items`/`title`/`description`/`pubDate`)는 동일. `뉴스분석._call_naver()`와
+> `백필_뉴스분석.py`의 `guarded_call_naver()` 둘 다 이 방식으로 수정함(2026-08-27).
+> `api/analyzeStocks.js`도 옛 엔드포인트를 쓰지만 문서상 미사용 코드라 수정 대상에서 제외.
+
 > ⚠️ **장 마감 직후가 아니라 그날 이른 시각(FDR/KIS 당일 데이터가 아직 갱신되기 전)에
 > 실행하면, 조용히 전날 데이터를 그날 것으로 잘못 저장하는 사고가 날 수 있다**
 > (2026-07-11 실제 발견 — 07-10 실행분의 `stock_data.indices`가 07-09와 완전히 동일한
@@ -107,6 +123,28 @@ python 뉴스분석.py   # 장마감 후 실행. 오늘 날짜 기준 KRX 전종
 > (전종목 `fdr.DataReader(code, 시작일, 대상일)` 개별 호출로 그날 종가·거래량 근사 →
 > KIS UN으로 최종 보강)을 그 하루치에 적용하는 1회성 스크립트로 처리(기존 "과거 날짜
 > 백필" 원칙과 동일, 스크립트는 실행 후 보관하지 않음).
+
+> ⚠️ **위와 증상은 같지만 원인이 다른 사고가 2026-09에 또 있었다 — FDR GitHub 캐시
+> 저장소(`fdr_krx_data_cache`) 안에서 종목 스냅샷용 배치와 지수용 배치가 서로 완전히
+> 분리돼 있어, 종목 쪽(`data/listing/krx`)은 매일 정상 커밋되는데 지수 쪽(`data/index`)
+> 배치만 따로 죽어 며칠~열흘 넘게 자동 커밋이 없는 경우가 있다**(GitHub 커밋 API
+> `?path=data/index`로 확인 가능, 2026-09-17 03:22 UTC 커밋을 마지막으로 열흘 이상
+> 정지된 사례 실제 확인). 이 경우 위 07-11 사고와 달리 "이른 시각 실행" 때문이 아니라
+> **장 마감 후 정상적으로 실행해도** `fetch_indices()`의 `fdr.DataReader('KS11'/'KQ11')`가
+> 계속 그 정지 시점 이전 종가를 "최신"으로 돌려줘, `stock_data.indices`가 전날(또는
+> 그보다 더 전)과 완전히 동일한 값으로 조용히 저장된다(2026-09-18, 09-21 두 건 실제
+> 발생 — 사용자가 "코스피 값이 전날이랑 똑같다"고 지적해 발견, 뉴스 기사 수치와 대조해
+> MongoDB를 직접 수정함). KIS 쪽에도 지수 전용 히스토리 endpoint(`inquire-daily-
+> indexchartprice`, tr_id `FHPUP02120000`)가 있어 대체를 시도했으나 이쪽은 그때 FDR보다도
+> 더 뒤처져 있어(09-15까지만) 못 씀. **2026-09-27, `fetch_indices()`를 Naver 모바일 지수
+> API(`https://m.stock.naver.com/api/index/{KOSPI|KOSDAQ}/price`)를 1순위로 쓰도록
+> 수정**(인증 불필요, 위 GitHub 캐시와 완전히 무관한 별도 실시간 소스라 이 지연에 영향을
+> 안 받음 — 뉴스 기사 수치와 대조해 정확도 확인함) — FDR은 Naver 호출이 실패할 때만
+> 폴백으로 남겨둠. **2026-09-27, `주간분석.py`의 `weekly_change()`/`resolve_target_week()`도
+> 같은 방식으로 수정** — `fdr.DataReader(ticker, ...)`를 직접 부르는 대신 `뉴스분석.
+> fetch_index_history(ticker, days=...)`(신규 함수, Naver 우선·FDR 폴백, `fetch_indices()`와
+> 같은 Naver 모바일 지수 API를 최근 N일 히스토리 형태로 반환)를 호출하도록 바꿈 — 두
+> 스크립트가 같은 Naver 소스를 공유해 로직 중복 없음.
 
 > ⚠️ **토스 API의 "고정 IP" 가정이 항상 유지되지는 않는다** — 로컬 실행 환경의
 > 공인 IP가 바뀌거나 토스 개발자 콘솔의 허용목록이 갱신되지 않으면 토큰 발급이
@@ -233,6 +271,31 @@ python 유튜브카드.py 2026-07-31 --shorts   # 16:9 + 9:16 쇼츠 모두 생�
   간격을 40px→16px로 좁혀 테마 카드처럼 붙어 보이도록 수정(2026-07-31).
 - 16:9와 마찬가지로 `저장분석.build_change_rate_map()`을 그대로 재사용해 `analysis.등락률`
   항목에 없는 `changeRate`를 `뉴스데이터_YYYYMMDD.json`에서 매칭해 채운다.
+
+### 유튜브카드.py — 주간 쇼츠(9:16) 카드 (2026-08-02 도입)
+```bash
+python 주간분석.py   # 저장 직후 자동 호출 — 단독 CLI 진입점은 없음
+```
+- `generate_weekly_shorts_cards(week, entry)`를 `주간분석.py`의 `save_weekly_digest()` 직후
+  자동 호출(try/except라 실패해도 weekly_indices 저장·digest는 이미 끝난 뒤라 영향 없음).
+  `entry`는 `weekly_indices`에 저장하는 것과 같은 dict(`{kospi, kosdaq, vol, rate, ...}`)를
+  그대로 받아 별도 MongoDB 재조회 없이 카드를 만든다.
+- 일간 쇼츠와 달리 **16:9 카드는 만들지 않음**(쇼츠만) — `Youtube/{week}/shorts/` 폴더에
+  9:16 카드만 생성(`week`는 `weekly_indices`의 `_id`와 같은 `"YYYY-W##"` 형식이라 날짜
+  폴더와 겹치지 않음).
+- `render_index_card_shorts`/`render_category_donut_card_shorts`(일간 쇼츠 함수)를 그대로
+  재사용 — 두 함수 모두 첫 인자를 eyebrow 배지 텍스트로만 쓰고 날짜 형식을 가정하지 않아
+  주차 문자열을 그대로 넣어도 된다. **테마 카드는 만들지 않음**(주간 데이터엔 Claude/Codex
+  분석을 거치지 않아 테마 자체가 없음).
+- **"등락률 상위 종목" 카드**(신규): 주간분석은 뉴스분석(상승원인)을 만들지 않으므로 일간
+  쇼츠의 "등락률 상위 종목 뉴스" 카드(상승원인 포함, `SHORTS_NEWS_CHUNK=2`개씩)를 그대로
+  못 쓴다. 대신 순위 배지·종목명·등락률 알약·카테고리 태그만 보여주는 더 가벼운 카드로
+  바꾸고(`_rank_block_shorts`), 상승원인 텍스트가 빠져 세로 공간이 남는 만큼 한 페이지에
+  `WEEKLY_SHORTS_RANK_CHUNK=3`개씩 담는다(일간은 2개씩, 사용자 확정) — `rate`(등락률 상위
+  50) 중 상위 30종목만 사용(`NEWS_TOP_N`, 일간과 동일한 상수 재사용).
+- 카테고리는 `주간분석.attach_categories()`가 이미 `vol`/`rate` 항목에 채워둔 `카테고리`
+  필드를 그대로 읽는다(그 주 일간 `ai_analysis`와 매칭 안 된 종목은 필드 자체가 없어
+  카테고리 태그를 생략).
 
 ### 주간분석.py (2026-06-21 도입, 2026-06-21 범위 축소, 2026-06-27 거래대금·등락률 상위 50 추가)
 ```bash

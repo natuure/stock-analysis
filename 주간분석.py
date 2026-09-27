@@ -18,6 +18,11 @@
     라기보다 "구성종목 검색" 기능 자체를 유지할 필요가 없다고 판단해 정리한 것)
   - 웹앱 달력의 그 주 주차(W##) 칸이 kospi/kosdaq을 읽어 표시하고, 그 주차를 클릭하면
     카테고리 비중 도넛과 주간 종목 데이터 표 사이에 etfRank 표도 함께 보여줌
+  - MongoDB 저장 직후 유튜브카드.generate_weekly_shorts_cards(week, entry) 자동 호출 →
+    Youtube/{week}/shorts/ 폴더에 9:16 쇼츠 카드(.html+.png) 생성(2026-08-02 도입, try/except라
+    실패해도 위 저장 자체는 안 막힘). 주간분석엔 뉴스 분석(상승원인)이 없어 일간 쇼츠의
+    "등락률 상위 종목 뉴스" 카드 대신 상승원인 없이 순위·종목명·등락률·카테고리만 보여주는
+    카드를 3개씩(일간은 2개씩) 묶어 만든다 — 16:9 카드는 만들지 않음(쇼츠 전용).
 
 RS Score(상대강도) 랭킹은 2026-07-11부터 이 스크립트가 아니라 별도 rs랭킹.py가 계산·
 저장한다(웹앱 "RS랭킹" 탭 전용, 주간뷰에는 표시하지 않기로 사용자가 결정) — 자세한
@@ -68,7 +73,7 @@ def weekly_change(ticker):
     """ticker의 가장 최근 월~금 주 변동률 1건을 (weekKey, {close,change,changeRate})로 반환.
     이번 주에 아직 거래일이 없으면(주말·휴일에 실행 등) 직전 완결된 주로 자동 이동한다."""
     today = datetime.now().date()
-    df = fdr.DataReader(ticker, today - timedelta(days=LOOKBACK_DAYS), today)
+    df = 뉴스분석.fetch_index_history(ticker, days=LOOKBACK_DAYS)
     if df.empty:
         return None
 
@@ -106,7 +111,7 @@ def resolve_target_week(lookback_days=LOOKBACK_DAYS):
     지수 자체의 변동률 계산 로직은 그대로 두고 건드리지 않기 위함.
     반환: (week_key_str, trading_dates: list[date]) 또는 데이터가 없으면 None."""
     today = datetime.now().date()
-    df = fdr.DataReader('KS11', today - timedelta(days=lookback_days), today)
+    df = 뉴스분석.fetch_index_history('KS11', days=lookback_days)
     if df.empty:
         return None
     this_monday = monday_of(today)
@@ -577,6 +582,12 @@ def main():
 
     save_to_mongodb(week, entry)
     save_weekly_digest(week, entry)
+
+    try:
+        import 유튜브카드
+        유튜브카드.generate_weekly_shorts_cards(week, entry)
+    except Exception as e:
+        print(f'경고: 주간 유튜브 쇼츠 카드 생성 실패({e}) — MongoDB 저장/digest는 정상 완료됨.')
 
     print('주간 ETF 등락률 상위 15 산출 중...')
     etf_client = MongoClient(MONGODB_URI) if MONGODB_URI else None

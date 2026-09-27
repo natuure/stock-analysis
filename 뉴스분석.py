@@ -13,6 +13,7 @@ import sys
 import json
 import time
 import requests
+import pandas as pd
 import FinanceDataReader as fdr
 from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
@@ -75,18 +76,79 @@ def fetch_market_data():
     return df
 
 def fetch_indices():
-    """코스피·코스닥 지수의 최근 거래일 종가/전일대비 포인트·등락률."""
-    end = datetime.now()
-    start = end - timedelta(days=7)
-    start_str, end_str = start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d')
+    """코스피·코스닥 지수의 최근 거래일 종가/전일대비 포인트·등락률.
+    Naver 모바일 지수 API(m.stock.naver.com)를 우선 사용한다 — FDR의 GitHub 캐시(
+    fdr_krx_data_cache 저장소)는 종목 스냅샷용 배치와 지수용 배치가 서로 완전히 분리돼
+    있어, 종목 쪽이 멀쩡해도 지수 쪽만 따로 며칠~열흘 넘게 멈추는 사고가 2026-09에
+    반복됐다(GitHub 커밋 이력으로 확인, data/index 경로만 정지). 그 기간엔 fdr.DataReader
+    ('KS11'/'KQ11')가 계속 며칠 전 값을 "오늘 종가"인 것처럼 반환해 MongoDB에 전날과
+    똑같은 지수가 중복 저장되는 사고가 실제로 있었음(2026-09-18, 09-21 두 건, 뉴스 기사
+    수치와 대조해 사후 수정함). Naver는 이 GitHub 캐시와 무관한 별도 실시간 소스라
+    지연이 없고 인증도 불필요 — FDR은 Naver 호출이 실패할 때만 폴백으로 남겨둔다."""
 
-    def last_two(ticker):
-        df = fdr.DataReader(ticker, start_str, end_str)
+    def from_naver(index_name):
+        r = requests.get(
+            f'https://m.stock.naver.com/api/index/{index_name}/price',
+            params={'pageSize': 2, 'page': 1},
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'},
+            timeout=10,
+        )
+        r.raise_for_status()
+        latest = r.json()[0]
+        close = float(latest['closePrice'].replace(',', ''))
+        change = float(latest['compareToPreviousClosePrice'].replace(',', ''))
+        if latest['compareToPreviousPrice']['name'] == 'FALLING':
+            change = -change
+        prev_close = close - change
+        return {'close': close, 'change': change, 'changeRate': change / prev_close * 100}
+
+    def from_fdr(ticker):
+        end = datetime.now()
+        start = end - timedelta(days=7)
+        df = fdr.DataReader(ticker, start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d'))
         close, prev_close = float(df['Close'].iloc[-1]), float(df['Close'].iloc[-2])
         change = close - prev_close
         return {'close': close, 'change': change, 'changeRate': change / prev_close * 100}
 
-    return {'kospi': last_two('KS11'), 'kosdaq': last_two('KQ11')}
+    result = {}
+    for key, naver_name, fdr_ticker in (('kospi', 'KOSPI', 'KS11'), ('kosdaq', 'KOSDAQ', 'KQ11')):
+        try:
+            result[key] = from_naver(naver_name)
+        except Exception as e:
+            print(f'[경고] Naver 지수 조회 실패({naver_name}), FDR로 폴백: {e}')
+            result[key] = from_fdr(fdr_ticker)
+    return result
+
+
+def fetch_index_history(ticker, days=30):
+    """지수(코스피 'KS11'/코스닥 'KQ11')의 최근 N일 종가 히스토리를 date-indexed
+    DataFrame(Close 컬럼)으로 반환한다 — fdr.DataReader(ticker, ...)와 같은 용도로
+    주간분석.py의 weekly_change()/resolve_target_week()이 재사용한다. fetch_indices()와
+    같은 이유로 Naver 모바일 지수 API를 우선 쓰고, 실패하거나 KS11/KQ11이 아닌 티커면
+    FDR로 폴백한다."""
+    naver_name = {'KS11': 'KOSPI', 'KQ11': 'KOSDAQ'}.get(ticker)
+    if naver_name:
+        try:
+            r = requests.get(
+                f'https://m.stock.naver.com/api/index/{naver_name}/price',
+                params={'pageSize': days, 'page': 1},
+                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'},
+                timeout=10,
+            )
+            r.raise_for_status()
+            rows = r.json()
+            df = pd.DataFrame({
+                'Close': {row['localTradedAt']: float(row['closePrice'].replace(',', '')) for row in rows}
+            })
+            df.index = pd.to_datetime(df.index)
+            df.index.name = 'Date'
+            return df.sort_index()
+        except Exception as e:
+            print(f'[경고] Naver 지수 히스토리 조회 실패({naver_name}), FDR로 폴백: {e}')
+    end = datetime.now()
+    start = end - timedelta(days=days)
+    return fdr.DataReader(ticker, start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d'))
+
 
 def get_previous_vol_ranks(today_date_str):
     """직전 거래일의 거래대금 순위를 {종목코드: 순위} 형태로 반환."""
@@ -343,9 +405,12 @@ NEWS_QUERIES = [
 ]
 
 def _call_naver(query):
-    url = 'https://openapi.naver.com/v1/search/news.json'
+    # 2026-08-27부터 네이버 오픈API가 NAVER API HUB로 이관되며 엔드포인트·인증 헤더가
+    # 바뀜(구 Developers Center 키는 이관 유예기간 있었지만, 새로 발급받은 키는 HUB
+    # 전용 키라 신규 엔드포인트/헤더로만 인증됨 — X-Naver-Client-Id 방식은 401).
+    url = 'https://naverapihub.apigw.ntruss.com/search/v1/news'
     params = {'query': query, 'display': 20, 'sort': 'date', 'start': 1}
-    headers = {'X-Naver-Client-Id': NAVER_ID, 'X-Naver-Client-Secret': NAVER_SECRET}
+    headers = {'X-NCP-APIGW-API-KEY-ID': NAVER_ID, 'X-NCP-APIGW-API-KEY': NAVER_SECRET}
     r = requests.get(url, params=params, headers=headers, timeout=6)
     return r.json().get('items', [])
 
