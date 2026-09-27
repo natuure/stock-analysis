@@ -73,7 +73,7 @@ def weekly_change(ticker):
     """ticker의 가장 최근 월~금 주 변동률 1건을 (weekKey, {close,change,changeRate})로 반환.
     이번 주에 아직 거래일이 없으면(주말·휴일에 실행 등) 직전 완결된 주로 자동 이동한다."""
     today = datetime.now().date()
-    df = 뉴스분석.fetch_index_history(ticker, days=LOOKBACK_DAYS)
+    df = 뉴스분석.fetch_index_history(ticker, days=LOOKBACK_DAYS, end=today)
     if df.empty:
         return None
 
@@ -111,7 +111,7 @@ def resolve_target_week(lookback_days=LOOKBACK_DAYS):
     지수 자체의 변동률 계산 로직은 그대로 두고 건드리지 않기 위함.
     반환: (week_key_str, trading_dates: list[date]) 또는 데이터가 없으면 None."""
     today = datetime.now().date()
-    df = 뉴스분석.fetch_index_history('KS11', days=lookback_days)
+    df = 뉴스분석.fetch_index_history('KS11', days=lookback_days, end=today)
     if df.empty:
         return None
     this_monday = monday_of(today)

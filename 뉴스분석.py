@@ -120,18 +120,27 @@ def fetch_indices():
     return result
 
 
-def fetch_index_history(ticker, days=30):
-    """지수(코스피 'KS11'/코스닥 'KQ11')의 최근 N일 종가 히스토리를 date-indexed
-    DataFrame(Close 컬럼)으로 반환한다 — fdr.DataReader(ticker, ...)와 같은 용도로
-    주간분석.py의 weekly_change()/resolve_target_week()이 재사용한다. fetch_indices()와
-    같은 이유로 Naver 모바일 지수 API를 우선 쓰고, 실패하거나 KS11/KQ11이 아닌 티커면
-    FDR로 폴백한다."""
+def fetch_index_history(ticker, days=30, end=None):
+    """지수(코스피 'KS11'/코스닥 'KQ11')의 종가 히스토리를 date-indexed DataFrame(Close
+    컬럼)으로 반환한다 — fdr.DataReader(ticker, ...)와 같은 용도로 주간분석.py의
+    weekly_change()/resolve_target_week()이 재사용한다. fetch_indices()와 같은 이유로
+    Naver 모바일 지수 API를 우선 쓰고, 실패하거나 KS11/KQ11이 아닌 티커면 FDR로 폴백한다.
+    `end`를 안 주면 실제 현재 시각 기준 최신 `days`일을 반환(평소 일간/주간 실행용).
+    **Naver API는 시작/종료일을 따로 안 받고 항상 "실제 현재" 기준 최신 N일만 주므로**,
+    과거 날짜로 `datetime.now()`를 monkeypatch해 이 함수를 호출하는 1회성 백필 스크립트
+    에서는 반드시 `end`를 그 가짜 날짜로 넘겨야 한다 — 안 그러면 실제 현재 시점까지의
+    데이터가 섞여 들어와 "이번 주 실제 거래일"이 5일을 넘는 등 조용히 틀린 결과가 나온다
+    (2026-09-27 실제 발견 — W38 재백필 시 이 함수에 end 없이 호출해 8거래일로 잘못
+    계산됨). 넉넉히 받아온 뒤 `end` 이전 데이터만 걸러 마지막 `days`개를 돌려준다."""
+    end_ts = pd.Timestamp(end) if end is not None else pd.Timestamp(datetime.now())
     naver_name = {'KS11': 'KOSPI', 'KQ11': 'KOSDAQ'}.get(ticker)
     if naver_name:
         try:
             r = requests.get(
                 f'https://m.stock.naver.com/api/index/{naver_name}/price',
-                params={'pageSize': days, 'page': 1},
+                # pageSize는 60 초과 시 400 에러(직접 확인, 2026-09-27) — 최대치로 고정해
+                # end 필터링 후에도 최대한 여유를 둠.
+                params={'pageSize': 60, 'page': 1},
                 headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'},
                 timeout=10,
             )
@@ -142,12 +151,15 @@ def fetch_index_history(ticker, days=30):
             })
             df.index = pd.to_datetime(df.index)
             df.index.name = 'Date'
-            return df.sort_index()
+            df = df.sort_index()
+            df = df[df.index <= end_ts]
+            if not df.empty:
+                return df.tail(days)
+            raise ValueError(f'{end_ts.date()} 이전 데이터 없음')
         except Exception as e:
             print(f'[경고] Naver 지수 히스토리 조회 실패({naver_name}), FDR로 폴백: {e}')
-    end = datetime.now()
-    start = end - timedelta(days=days)
-    return fdr.DataReader(ticker, start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d'))
+    start_ts = end_ts - timedelta(days=days)
+    return fdr.DataReader(ticker, start_ts.strftime('%Y-%m-%d'), end_ts.strftime('%Y-%m-%d'))
 
 
 def get_previous_vol_ranks(today_date_str):
