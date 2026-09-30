@@ -153,6 +153,23 @@ input  { font-family: inherit; outline: none; }
 .index-label { font-size: 13px; font-weight: 700; color: var(--c-muted); margin-bottom: 8px; }
 .index-close { font-size: 26px; font-weight: 700; color: var(--c-heading); font-variant-numeric: tabular-nums; }
 .index-change { font-size: 14px; font-weight: 600; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.index-trend {
+  list-style: none; margin: 12px 0 0; padding: 10px 0 0; border-top: 1px solid var(--c-border);
+  display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600;
+}
+.index-trend li.ok { color: var(--c-heading); }
+.index-trend li.no { color: var(--c-muted); }
+.index-trend-mark { display: inline-block; width: 16px; }
+.index-trend li.ok .index-trend-mark { color: var(--c-up); }
+.index-signals {
+  list-style: none; margin: 10px 0 0; padding: 10px 0 0; border-top: 1px solid var(--c-border);
+  display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600;
+}
+.index-signals li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 8px; }
+.index-signal-name { color: var(--c-muted); }
+.index-signal-val.on { color: var(--c-up); }
+.index-signal-val.off { color: var(--c-heading); }
+.index-signal-last { color: var(--c-muted); font-weight: 500; font-size: 12px; }
 
 /* ── Sector bars ──────────────────────────────────────────── */
 .sec-list { display: flex; flex-direction: column; gap: 9px; }

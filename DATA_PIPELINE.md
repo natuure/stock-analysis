@@ -84,6 +84,36 @@ python 뉴스분석.py   # 장마감 후 실행. 오늘 날짜 기준 KRX 전종
 - 거래대금 상위 50 / 등락률 상위 50(거래대금 300억↑ 대상) 산출 — **KIS 통합(KRX+NXT)
   데이터로 보강** (2026-06-21 도입, 아래 "KIS 통합 거래대금·등락률 보강" 참고)
 - 코스피·코스닥 지수 종가/등락률도 같이 수집 (`fetch_indices()`, `fdr.DataReader('KS11'|'KQ11')`)
+- **지수 추세 3조건(2026-09-30 도입)**: `fetch_index_trend(ticker, date)`가 지수 종가 260거래일
+  (`fetch_index_history(days=260)`)로 ① 종가 > MA50(`above50`) ② MA50 기울기 상승(`slope50Up`)
+  ③ MA200 기울기 상승(`slope200Up`)을 계산해 `indices.kospi.trend`/`indices.kosdaq.trend`
+  (`{above50, slope50Up, slope200Up, ma50, ma200}`)로 저장. **"기울기 상승" = 오늘 MA >
+  5거래일 전 MA**(`TREND_SLOPE_LAG=5`, 사용자 지정). 히스토리가 205개 미만이거나 예외가 나면
+  `trend`만 빠지고 나머지 흐름은 계속(화면에선 체크리스트 미표시). `fetch_index_history()`는
+  `days>60`이면 Naver API를 `page=1..N`(pageSize 60 고정, 최대 5페이지=300거래일 확인)로
+  페이징해 합침 — `days<=60`이면 기존과 동일하게 1페이지. FDR 폴백은 `days`가 달력일이라
+  200거래일이 안 나오므로 이 경우 trend는 생략됨. 과거 날짜 문서엔 `trend`가 없음(백필 안 함).
+  `CACHE_VERSION` 10→11. 화면 표시는 [FRONTEND.md](FRONTEND.md) `IndexSummary.jsx` 참고.
+- **시장 바닥 신호 Stage 1 셀링 클라이맥스 / Stage 2 FTD (2026-09-30 도입)**:
+  `fetch_index_ohlcv(name, date)` → `compute_index_signals(df)`(순수 함수)가 `indices.kospi|kosdaq.signals`
+  `{climax:{today,lastDate,volRatio,changeRate}, ftd:{today,lastDate,day,lowDate,attempt:{day,lowDate}|null}}`
+  로 저장. `lastDate`/`day`/`lowDate`는 조회한 ~400일 안에서 가장 최근 발생 건(없으면 null),
+  `attempt`는 최근 7거래일 안에 유효한 저점이 있을 때의 "반등 N일차".
+  - 거래량 소스: `api.stock.naver.com/chart/domestic/index/{KOSPI|KOSDAQ}/day?startDateTime=&endDateTime=`
+    (OHLC + `accumulatedTradingVolume`, 천주, 인증 불필요). `fetch_index_history()`가 쓰는
+    `m.stock.naver.com/.../price` API엔 거래량이 없고 FDR은 지수 캐시가 2주 넘게 지연될 수 있어
+    폴백 없이 실패 시 `signals`만 생략(나머지 흐름 계속). 거래량은 주식 수 기준(거래대금 아님).
+  - **Stage 1**: 60일 종가 고점 대비 ≤ -10% **AND** (종가 등락률 ≤ -2% **OR** 장중 저가가 전일 종가 대비
+    ≤ -3%) **AND** 거래량 ≥ 직전 50거래일 평균의 **1.2배**
+    (처음엔 1.5배였으나 2024-08-05 급락처럼 거래량 1.3~1.4배였던 대표적 바닥 사례를 놓쳐 같은 날 1.2배로
+    완화 — 사용자 결정. 1.2배 실측: 2024-01 이후 코스피 10회·코스닥 3회, 1.5배는 코스피 3회·코스닥 0회).
+  - **FTD**: 저점일(60일 종가 최저 + 그 시점 60일 고점 대비 ≤ -10%) 다음날을 1일차로 세어 4~7일차에
+    종가 +1.7% 이상 + 전일 대비 거래량 증가, 그 사이 종가가 저점을 하회하면 무효. (저점 시점의 -10%
+    배경 조건은 사용자 지정이 아니라 Stage 1과 통일하려고 추가한 가정 — 상수 `SIGNAL_DD_MIN`)
+  - 임계값은 `뉴스분석.py` 상수(`CLIMAX_*`, `FTD_*`, `SIGNAL_*`), 6자리 반올림으로 경계값 부동소수점
+    오차 방지. 최근(2026-07~09) 급락일은 거래량 비율이 0.6~0.9라
+    1.2배로 낮춰도 미해당 — 정상 동작. 과거 날짜 문서엔 `signals` 없음(백필 안 함).
+    `CACHE_VERSION` 11→12.
 - MongoDB `stock_data` 컬렉션에 저장 (웹앱 달력 초록 점 자동 표시)
 - 거래대금+등락률 종목(최대 100개)의 토스증권 일봉 캔들 85개를 미리 조회해 MongoDB `candles`에 캐싱
   (토스 API는 IP 허용 목록 기반이라 고정 IP인 로컬에서만 호출, Vercel은 직접 호출하지 않음.
@@ -145,6 +175,20 @@ python 뉴스분석.py   # 장마감 후 실행. 오늘 날짜 기준 KRX 전종
 > fetch_index_history(ticker, days=...)`(신규 함수, Naver 우선·FDR 폴백, `fetch_indices()`와
 > 같은 Naver 모바일 지수 API를 최근 N일 히스토리 형태로 반환)를 호출하도록 바꿈 — 두
 > 스크립트가 같은 Naver 소스를 공유해 로직 중복 없음.
+
+> ⚠️ **바로 위 2026-09-27 수정에 이중 부호반전 버그가 있었다 — 2026-09-28에 코스피가
+> 실제로는 -2.70% 하락(6,889.74, -191.18)했는데 `stock_data.indices.kospi`에는 +2.85%로
+> 정반대 부호로 저장됨**(코스닥은 그날 상승(+0.25%)이라 우연히 정상으로 보여 발견이
+> 늦어짐 — 사용자가 Toss 화면 캡처와 비교해 지적해서 발견). 원인: Naver 모바일 지수 API의
+> `compareToPreviousClosePrice` 필드가 하락일 땐 이미 부호를 포함한 문자열
+> (`"-191.18"`)을 반환하는데, `from_naver()`가 이 값을 그대로 신뢰하지 않고
+> `compareToPreviousPrice.name == 'FALLING'`이면 `change = -change`로 한 번 더 부호를
+> 뒤집어 이중 반전이 됐다(상승일엔 원래 필드가 양수라 반전 로직이 안 걸려 우연히 맞았음).
+> `fetch_indices()`의 `from_naver()`에서 이 수동 부호반전 3줄을 제거하고 API가 이미 준
+> 부호를 그대로 쓰도록 수정(2026-09-28) — `fetch_index_history()`는 종가만 쓰고 change를
+> 계산하지 않아 이 버그의 영향을 받지 않았음. 이미 잘못 저장된 2026-09-28
+> `stock_data.indices.kospi`는 스크립트로 직접 재계산해 수정함(change/changeRate만 `$set`,
+> close는 원래도 맞았으므로 그대로 둠).
 
 > ⚠️ **토스 API의 "고정 IP" 가정이 항상 유지되지는 않는다** — 로컬 실행 환경의
 > 공인 IP가 바뀌거나 토스 개발자 콘솔의 허용목록이 갱신되지 않으면 토큰 발급이

@@ -97,8 +97,6 @@ def fetch_indices():
         latest = r.json()[0]
         close = float(latest['closePrice'].replace(',', ''))
         change = float(latest['compareToPreviousClosePrice'].replace(',', ''))
-        if latest['compareToPreviousPrice']['name'] == 'FALLING':
-            change = -change
         prev_close = close - change
         return {'close': close, 'change': change, 'changeRate': change / prev_close * 100}
 
@@ -136,16 +134,20 @@ def fetch_index_history(ticker, days=30, end=None):
     naver_name = {'KS11': 'KOSPI', 'KQ11': 'KOSDAQ'}.get(ticker)
     if naver_name:
         try:
-            r = requests.get(
-                f'https://m.stock.naver.com/api/index/{naver_name}/price',
-                # pageSize는 60 초과 시 400 에러(직접 확인, 2026-09-27) — 최대치로 고정해
-                # end 필터링 후에도 최대한 여유를 둠.
-                params={'pageSize': 60, 'page': 1},
-                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'},
-                timeout=10,
-            )
-            r.raise_for_status()
-            rows = r.json()
+            # pageSize는 60 초과 시 400 에러(직접 확인, 2026-09-27) — 최대치로 고정해
+            # end 필터링 후에도 최대한 여유를 둠. page=1..5로 300거래일까지 페이징됨을
+            # 직접 확인(2026-09-30) — days가 60을 넘으면(이동평균선 계산 등) 필요한 만큼
+            # 페이지를 더 받아 합친다. days<=60이면 예전처럼 1페이지만 호출.
+            rows = []
+            for page in range(1, -(-days // 60) + 1):
+                r = requests.get(
+                    f'https://m.stock.naver.com/api/index/{naver_name}/price',
+                    params={'pageSize': 60, 'page': page},
+                    headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'},
+                    timeout=10,
+                )
+                r.raise_for_status()
+                rows += r.json()
             df = pd.DataFrame({
                 'Close': {row['localTradedAt']: float(row['closePrice'].replace(',', '')) for row in rows}
             })
@@ -160,6 +162,130 @@ def fetch_index_history(ticker, days=30, end=None):
             print(f'[경고] Naver 지수 히스토리 조회 실패({naver_name}), FDR로 폴백: {e}')
     start_ts = end_ts - timedelta(days=days)
     return fdr.DataReader(ticker, start_ts.strftime('%Y-%m-%d'), end_ts.strftime('%Y-%m-%d'))
+
+
+TREND_HISTORY_DAYS = 260  # MA200 + 기울기 비교(5거래일 전)에 필요한 205개 + 여유
+TREND_SLOPE_LAG = 5       # "기울기 상승" = 오늘 MA가 5거래일 전 MA보다 큼
+
+def fetch_index_trend(ticker, date_str):
+    """지수의 추세 3조건(종가>MA50, MA50 기울기 상승, MA200 기울기 상승)을 계산해 반환.
+    기울기는 오늘 MA와 TREND_SLOPE_LAG거래일 전 MA를 비교한다. 히스토리가 부족하면
+    (Naver 실패 후 FDR 폴백 시 달력일 기준이라 200거래일이 안 나옴) None."""
+    close = fetch_index_history(ticker, days=TREND_HISTORY_DAYS)['Close']
+    if len(close) < 200 + TREND_SLOPE_LAG:
+        print(f'[경고] {ticker} 히스토리 {len(close)}개 — MA200 계산 불가, 추세 조건 생략')
+        return None
+    if close.index[-1].strftime('%Y-%m-%d') != date_str:
+        print(f'[경고] {ticker} 히스토리 최신일 {close.index[-1].date()} ≠ 오늘 {date_str} — 장 마감 전이거나 지연')
+    ma50, ma200 = close.rolling(50).mean(), close.rolling(200).mean()
+    return {
+        'above50': bool(close.iloc[-1] > ma50.iloc[-1]),
+        'slope50Up': bool(ma50.iloc[-1] > ma50.iloc[-1 - TREND_SLOPE_LAG]),
+        'slope200Up': bool(ma200.iloc[-1] > ma200.iloc[-1 - TREND_SLOPE_LAG]),
+        'ma50': round(float(ma50.iloc[-1]), 2),
+        'ma200': round(float(ma200.iloc[-1]), 2),
+    }
+
+
+# ── 시장 바닥 신호: Stage 1 셀링 클라이맥스 / Stage 2 FTD ─────────────────────────
+SIGNAL_LOOKBACK = 60   # "60일 고점 대비"·"60일 종가 최저" 기준 거래일 수
+VOL_AVG_DAYS = 50      # 거래량 비율 분모(직전 50거래일 평균 거래량)
+SIGNAL_DD_MIN = -10.0  # 하락 국면 배경: 60일 종가 고점 대비 이 값(%) 이하
+CLIMAX_CLOSE = -2.0    # 급락: 종가 등락률(%) 이하 — 또는
+CLIMAX_LOW = -3.0      #       장중 저가가 전일 종가 대비(%) 이하
+CLIMAX_VOL = 1.2       # 거래량이 직전 50거래일 평균의 이 배수 이상 (2026-09-30 1.5→1.2, 2024-08-05
+                       # 급락 등 1.3~1.4배였던 대표적 바닥 사례를 놓치지 않으려고 완화)
+FTD_MIN_DAY = 4        # 반등 시작(저점 다음날=1일차) 후 FTD 인정 구간
+FTD_MAX_DAY = 7
+FTD_GAIN = 1.7         # FTD 당일 종가 등락률(%) 이상
+
+def fetch_index_ohlcv(name, end_date_str, calendar_days=400):
+    """Naver 지수 일봉 차트 API(api.stock.naver.com/chart/domestic/index)로 시/고/저/종가와
+    거래량(accumulatedTradingVolume, 천주)을 받아 date-indexed DataFrame으로 반환한다
+    (2026-09-30 직접 확인: 2024-01-02~ 667거래일이 한 번에 조회되고 최신일 거래량이 Naver
+    integration API 값과 일치). fetch_index_history()가 쓰는 m.stock.naver.com price API에는
+    거래량이 없고, FDR은 지수 캐시가 2주 넘게 뒤처질 수 있어(2026-09) 거래량 소스로 못 쓴다 —
+    그래서 폴백 없이 실패하면 예외를 그대로 올린다. name은 'KOSPI'|'KOSDAQ'."""
+    end_ts = pd.Timestamp(end_date_str)
+    start_ts = end_ts - timedelta(days=calendar_days)
+    r = requests.get(
+        f'https://api.stock.naver.com/chart/domestic/index/{name}/day',
+        params={'startDateTime': start_ts.strftime('%Y%m%d'), 'endDateTime': end_ts.strftime('%Y%m%d')},
+        headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'},
+        timeout=15,
+    )
+    r.raise_for_status()
+    rows = r.json()
+    if not rows:
+        raise ValueError(f'{name} 일봉 데이터 없음')
+    df = pd.DataFrame(rows)
+    df.index = pd.to_datetime(df['localDate'], format='%Y%m%d')
+    df.index.name = 'Date'
+    df = df.rename(columns={'openPrice': 'Open', 'highPrice': 'High', 'lowPrice': 'Low',
+                            'closePrice': 'Close', 'accumulatedTradingVolume': 'Volume'})
+    return df[['Open', 'High', 'Low', 'Close', 'Volume']].astype(float).sort_index()
+
+
+def compute_index_signals(df):
+    """일봉 DataFrame(Open/High/Low/Close/Volume, 날짜 오름차순)에서 마지막 거래일 기준
+    Stage 1 셀링 클라이맥스·Stage 2 FTD 상태를 반환한다(순수 함수 — 과거 시점으로 잘라 넣어
+    검증 가능). 히스토리가 SIGNAL_LOOKBACK+1개 미만이면 None.
+    Stage 1: 60일 고점 대비 SIGNAL_DD_MIN 이하 + (종가 등락률 ≤ CLIMAX_CLOSE 또는 장중저가율 ≤
+      CLIMAX_LOW) + 거래량 ≥ 직전 50일 평균 × CLIMAX_VOL.
+    Stage 2: 어떤 k∈[FTD_MIN_DAY, FTD_MAX_DAY]에 대해, t-k일이 60일 종가 최저(하락 배경 충족)이고
+      그 뒤 종가가 그 저점을 한 번도 하회하지 않았으며(이탈 시 무효), t일 종가 등락률 ≥ FTD_GAIN,
+      거래량이 전일보다 증가. 저점 다음날이 반등 1일차.
+    attempt: 위 저점 조건을 만족하는 저점이 최근 FTD_MAX_DAY거래일 안에 있으면 지금 몇 일차인지."""
+    if len(df) < SIGNAL_LOOKBACK + 1:
+        return None
+    close, low, vol = df['Close'], df['Low'], df['Volume']
+    # 6자리 반올림: 임계값과 정확히 같은 경계값이 부동소수점 오차로 어긋나지 않게 함
+    chg = (close.pct_change() * 100).round(6)
+    low_rate = ((low / close.shift() - 1) * 100).round(6)
+    vol_ratio = (vol / vol.rolling(VOL_AVG_DAYS).mean().shift()).round(6)
+    dd = ((close / close.rolling(SIGNAL_LOOKBACK).max() - 1) * 100).round(6)
+    is_low = close == close.rolling(SIGNAL_LOOKBACK).min()
+    climax = (dd <= SIGNAL_DD_MIN) & ((chg <= CLIMAX_CLOSE) | (low_rate <= CLIMAX_LOW)) & (vol_ratio >= CLIMAX_VOL)
+
+    c, v, g = close.to_numpy(), vol.to_numpy(), chg.to_numpy()
+    dates = [d.strftime('%Y-%m-%d') for d in df.index]
+
+    def valid_low(lo, t):
+        return bool(is_low.iloc[lo]) and dd.iloc[lo] <= SIGNAL_DD_MIN and c[lo + 1:t + 1].min() >= c[lo]
+
+    def ftd_at(t):
+        for k in range(FTD_MIN_DAY, FTD_MAX_DAY + 1):
+            lo = t - k
+            if lo >= 0 and g[t] >= FTD_GAIN and v[t] > v[t - 1] and valid_low(lo, t):
+                return k, lo
+        return None
+
+    last = len(df) - 1
+    climax_dates = [dates[i] for i in range(len(df)) if climax.iloc[i]]
+    ftd_hits = [(i, ftd_at(i)) for i in range(SIGNAL_LOOKBACK, len(df))]
+    ftd_hits = [(i, h) for i, h in ftd_hits if h]
+    attempt = next(
+        ({'day': k, 'lowDate': dates[last - k]}
+         for k in range(1, FTD_MAX_DAY + 1) if last - k >= 0 and valid_low(last - k, last)),
+        None,
+    )
+    nn = lambda x: None if pd.isna(x) else round(float(x), 2)
+    ftd_last = ftd_hits[-1] if ftd_hits else None
+    return {
+        'climax': {
+            'today': bool(climax.iloc[last]),
+            'lastDate': climax_dates[-1] if climax_dates else None,
+            'volRatio': nn(vol_ratio.iloc[last]),
+            'changeRate': nn(chg.iloc[last]),
+        },
+        'ftd': {
+            'today': bool(ftd_last and ftd_last[0] == last),
+            'lastDate': dates[ftd_last[0]] if ftd_last else None,
+            'day': ftd_last[1][0] if ftd_last else None,
+            'lowDate': dates[ftd_last[1][1]] if ftd_last else None,
+            'attempt': attempt,
+        },
+    }
 
 
 def get_previous_vol_ranks(today_date_str):
@@ -607,6 +733,36 @@ def main():
     indices = fetch_indices()
     print(f"코스피 {indices['kospi']['close']:.2f} ({indices['kospi']['changeRate']:+.2f}%), "
           f"코스닥 {indices['kosdaq']['close']:.2f} ({indices['kosdaq']['changeRate']:+.2f}%)")
+
+    # 추세 3조건(50일선 위 / 50일선 기울기 / 200일선 기울기) — 실패해도 이후 흐름은 계속
+    for key, ticker in (('kospi', 'KS11'), ('kosdaq', 'KQ11')):
+        try:
+            trend = fetch_index_trend(ticker, date)
+        except Exception as e:
+            print(f'[경고] {key} 추세 조건 계산 실패: {e}')
+            continue
+        if trend:
+            indices[key]['trend'] = trend
+            ox = lambda b: 'O' if b else 'X'
+            print(f"  {key} 추세: 50일선 위 {ox(trend['above50'])}, 50일선 상승 {ox(trend['slope50Up'])}, "
+                  f"200일선 상승 {ox(trend['slope200Up'])}")
+
+    # 시장 바닥 신호(Stage 1 셀링 클라이맥스 / Stage 2 FTD) — 실패해도 이후 흐름은 계속
+    for key, naver_name in (('kospi', 'KOSPI'), ('kosdaq', 'KOSDAQ')):
+        try:
+            ohlcv = fetch_index_ohlcv(naver_name, date)
+            if ohlcv.index[-1].strftime('%Y-%m-%d') != date:
+                print(f'[경고] {key} 일봉 최신일 {ohlcv.index[-1].date()} ≠ 오늘 {date} — 장 마감 전이거나 지연')
+            signals = compute_index_signals(ohlcv)
+        except Exception as e:
+            print(f'[경고] {key} 바닥 신호 계산 실패: {e}')
+            continue
+        if signals:
+            indices[key]['signals'] = signals
+            cl, ft = signals['climax'], signals['ftd']
+            att = f"반등 {ft['attempt']['day']}일차" if ft['attempt'] else '반등 시도 없음'
+            print(f"  {key} 셀링 클라이맥스 {'해당' if cl['today'] else '미해당'}(최근 {cl['lastDate'] or '없음'}), "
+                  f"FTD {'발생' if ft['today'] else '미발생'}(최근 {ft['lastDate'] or '없음'}, {att})")
 
     # 토스증권 일봉 캔들 캐싱 (종목 클릭 시 모달에서 사용) + 60일 신고가 대비 등락률 계산
     # (vol/rate에 high60Rate를 채워넣으므로 MongoDB 저장보다 먼저 실행해야 함)
