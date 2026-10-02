@@ -1,6 +1,8 @@
 """
 FinanceDataReader 전종목 수집 + Naver 뉴스 수집 + MongoDB 저장 스크립트
-사용법: python 뉴스분석.py
+사용법: python 뉴스분석.py [날짜]
+       (자정을 넘겨 실행했다면 마감일을 인자로: python 뉴스분석.py 261001 — 지수 최신 거래일과
+        같을 때만 허용)
        (장마감 후 실행 가정. 오늘 날짜 기준으로 전종목 거래대금/등락률 상위 50종목 자동 수집)
 결과:
   - 뉴스데이터_YYYYMMDD.json 저장 (Claude Code가 읽어 분석)
@@ -171,7 +173,7 @@ def fetch_index_trend(ticker, date_str):
     """지수의 추세 3조건(종가>MA50, MA50 기울기 상승, MA200 기울기 상승)을 계산해 반환.
     기울기는 오늘 MA와 TREND_SLOPE_LAG거래일 전 MA를 비교한다. 히스토리가 부족하면
     (Naver 실패 후 FDR 폴백 시 달력일 기준이라 200거래일이 안 나옴) None."""
-    close = fetch_index_history(ticker, days=TREND_HISTORY_DAYS)['Close']
+    close = fetch_index_history(ticker, days=TREND_HISTORY_DAYS, end=date_str)['Close']
     if len(close) < 200 + TREND_SLOPE_LAG:
         print(f'[경고] {ticker} 히스토리 {len(close)}개 — MA200 계산 불가, 추세 조건 생략')
         return None
@@ -710,8 +712,63 @@ def cache_candles(vol, rate, date_str):
 
 # ── 메인 ─────────────────────────────────────────────────────────────────────
 
+def attach_index_analysis(indices, date):
+    """indices['kospi'|'kosdaq']에 추세 3조건(trend)과 시장 바닥 신호(signals)를 채운다.
+    각 계산은 독립적인 try/except — 실패해도 해당 필드만 빠지고 이후 흐름은 계속된다.
+    date 기준으로 히스토리를 자르므로 과거 날짜 재구성 스크립트에서도 재사용 가능."""
+    for key, ticker in (('kospi', 'KS11'), ('kosdaq', 'KQ11')):
+        try:
+            trend = fetch_index_trend(ticker, date)
+        except Exception as e:
+            print(f'[경고] {key} 추세 조건 계산 실패: {e}')
+            continue
+        if trend:
+            indices[key]['trend'] = trend
+            ox = lambda b: 'O' if b else 'X'
+            print(f"  {key} 추세: 50일선 위 {ox(trend['above50'])}, 50일선 상승 {ox(trend['slope50Up'])}, "
+                  f"200일선 상승 {ox(trend['slope200Up'])}")
+
+    for key, naver_name in (('kospi', 'KOSPI'), ('kosdaq', 'KOSDAQ')):
+        try:
+            ohlcv = fetch_index_ohlcv(naver_name, date)
+            if ohlcv.index[-1].strftime('%Y-%m-%d') != date:
+                print(f'[경고] {key} 일봉 최신일 {ohlcv.index[-1].date()} ≠ 오늘 {date} — 장 마감 전이거나 지연')
+            signals = compute_index_signals(ohlcv)
+        except Exception as e:
+            print(f'[경고] {key} 바닥 신호 계산 실패: {e}')
+            continue
+        if signals:
+            indices[key]['signals'] = signals
+            cl, ft = signals['climax'], signals['ftd']
+            att = f"반등 {ft['attempt']['day']}일차" if ft['attempt'] else '반등 시도 없음'
+            print(f"  {key} 셀링 클라이맥스 {'해당' if cl['today'] else '미해당'}(최근 {cl['lastDate'] or '없음'}), "
+                  f"FTD {'발생' if ft['today'] else '미발생'}(최근 {ft['lastDate'] or '없음'}, {att})")
+
+
+def resolve_run_date(argv):
+    """실행 날짜 결정. 인자가 없으면 오늘, `python 뉴스분석.py 261001`(YYMMDD)·`20261001`·
+    `2026-10-01`처럼 주면 그 날짜로 저장한다 — 자정을 넘겨 실행해 "오늘"이 하루 밀린 경우
+    (2026-10-02 00:28에 10-01 마감분을 돌리려던 사례)를 위한 것. 전종목 시세(FDR)·지수(Naver)는
+    항상 "최신 스냅샷"이라 과거 날짜를 정확히 수집할 수 없으므로, 인자 날짜가 지수의 최신 거래일과
+    다르면 잘못된 날짜로 조용히 저장되지 않도록 중단한다(과거 날짜는 백필 스크립트 사용)."""
+    if len(argv) < 2:
+        return datetime.now().strftime('%Y-%m-%d')
+    raw = argv[1].replace('-', '')
+    fmt = {6: '%y%m%d', 8: '%Y%m%d'}.get(len(raw))
+    try:
+        date = datetime.strptime(raw, fmt).strftime('%Y-%m-%d')
+    except (TypeError, ValueError):
+        sys.exit(f'[오류] 날짜 형식을 인식할 수 없음: {argv[1]} (예: 261001, 20261001, 2026-10-01)')
+    latest = fetch_index_ohlcv('KOSPI', datetime.now().strftime('%Y-%m-%d'), calendar_days=10)
+    latest_date = latest.index[-1].strftime('%Y-%m-%d')
+    if latest_date != date:
+        sys.exit(f'[오류] 지수 최신 거래일은 {latest_date}인데 {date}로 실행하려 함 — 시세 수집이 최신 스냅샷 '
+                 f'기준이라 다른 날짜로는 정확히 저장할 수 없음(과거 날짜는 백필 스크립트 사용)')
+    return date
+
+
 def main():
-    date = datetime.now().strftime('%Y-%m-%d')
+    date = resolve_run_date(sys.argv)
     date_korean = format_date_korean(date)
     print(f'날짜: {date_korean}')
 
@@ -734,35 +791,7 @@ def main():
     print(f"코스피 {indices['kospi']['close']:.2f} ({indices['kospi']['changeRate']:+.2f}%), "
           f"코스닥 {indices['kosdaq']['close']:.2f} ({indices['kosdaq']['changeRate']:+.2f}%)")
 
-    # 추세 3조건(50일선 위 / 50일선 기울기 / 200일선 기울기) — 실패해도 이후 흐름은 계속
-    for key, ticker in (('kospi', 'KS11'), ('kosdaq', 'KQ11')):
-        try:
-            trend = fetch_index_trend(ticker, date)
-        except Exception as e:
-            print(f'[경고] {key} 추세 조건 계산 실패: {e}')
-            continue
-        if trend:
-            indices[key]['trend'] = trend
-            ox = lambda b: 'O' if b else 'X'
-            print(f"  {key} 추세: 50일선 위 {ox(trend['above50'])}, 50일선 상승 {ox(trend['slope50Up'])}, "
-                  f"200일선 상승 {ox(trend['slope200Up'])}")
-
-    # 시장 바닥 신호(Stage 1 셀링 클라이맥스 / Stage 2 FTD) — 실패해도 이후 흐름은 계속
-    for key, naver_name in (('kospi', 'KOSPI'), ('kosdaq', 'KOSDAQ')):
-        try:
-            ohlcv = fetch_index_ohlcv(naver_name, date)
-            if ohlcv.index[-1].strftime('%Y-%m-%d') != date:
-                print(f'[경고] {key} 일봉 최신일 {ohlcv.index[-1].date()} ≠ 오늘 {date} — 장 마감 전이거나 지연')
-            signals = compute_index_signals(ohlcv)
-        except Exception as e:
-            print(f'[경고] {key} 바닥 신호 계산 실패: {e}')
-            continue
-        if signals:
-            indices[key]['signals'] = signals
-            cl, ft = signals['climax'], signals['ftd']
-            att = f"반등 {ft['attempt']['day']}일차" if ft['attempt'] else '반등 시도 없음'
-            print(f"  {key} 셀링 클라이맥스 {'해당' if cl['today'] else '미해당'}(최근 {cl['lastDate'] or '없음'}), "
-                  f"FTD {'발생' if ft['today'] else '미발생'}(최근 {ft['lastDate'] or '없음'}, {att})")
+    attach_index_analysis(indices, date)
 
     # 토스증권 일봉 캔들 캐싱 (종목 클릭 시 모달에서 사용) + 60일 신고가 대비 등락률 계산
     # (vol/rate에 high60Rate를 채워넣으므로 MongoDB 저장보다 먼저 실행해야 함)
