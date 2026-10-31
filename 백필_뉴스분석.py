@@ -119,11 +119,12 @@ def install_quota_guard(state, threshold=CONSECUTIVE_FAILURE_THRESHOLD):
     import requests
 
     def guarded_call_naver(query):
-        url = 'https://openapi.naver.com/v1/search/news.json'
+        # 뉴스분석._call_naver와 동일하게 NAVER API HUB 엔드포인트/헤더 사용(2026-08-27 이관)
+        url = 'https://naverapihub.apigw.ntruss.com/search/v1/news'
         params = {'query': query, 'display': 20, 'sort': 'date', 'start': 1}
         headers = {
-            'X-Naver-Client-Id': 뉴스분석.NAVER_ID,
-            'X-Naver-Client-Secret': 뉴스분석.NAVER_SECRET,
+            'X-NCP-APIGW-API-KEY-ID': 뉴스분석.NAVER_ID,
+            'X-NCP-APIGW-API-KEY': 뉴스분석.NAVER_SECRET,
         }
         try:
             r = requests.get(url, params=params, headers=headers, timeout=6)
