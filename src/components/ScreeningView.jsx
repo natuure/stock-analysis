@@ -10,6 +10,15 @@ const TREND_WEEKS = 10;       // 추이 차트·표에 보여줄 최근 주차 �
 const TREND_TOP_CATEGORIES = 5; // 업종 추이 차트에 그릴 선택 주차의 상위 업종 수
 const VISIBLE_ROWS = 5;         // 업종별 분포·전체 종목은 위에서 5개 업종만 보이고 나머지는 스크롤
 const PEEK = 14;                // 6번째 항목을 살짝 걸쳐 보여 스크롤할 수 있다는 표시를 줌(px)
+// 시가총액 구간(억원, 큰 쪽부터) — 절대 금액 기준이라 주차가 바뀌어도 구간이 흔들리지 않는다.
+// 종목서칭 기본 조건이 시총 1,000억 이상이라 가장 작은 구간의 하한은 사실상 1,000억.
+const MARCAP_BUCKETS = [
+  { label: '초대형 (10조 이상)', min: 100000 },
+  { label: '대형 (3조~10조)', min: 30000 },
+  { label: '중형 (1조~3조)', min: 10000 },
+  { label: '소형 (3천억~1조)', min: 3000 },
+  { label: '초소형 (3천억 미만)', min: 0 },
+];
 const OTHER = '기타';           // 분류 못 한 종목 묶음 — 최다 업종에서 제외, 분포·종목 목록에서는 맨 아래
 
 const weekLabel = (w) => w.weekKey.split('-')[1];                     // "2026-W44" → "W44"
@@ -52,6 +61,26 @@ function DistributionBars({ week }) {
           <span className="scr-bar-name">{c.category}</span>
           <span className="scr-bar-track"><i style={{ width: `${(c.count / max) * 100}%` }} /></span>
           <span className="scr-bar-num">{c.count}<em>{(c.count / week.total * 100).toFixed(0)}%</em></span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MarcapBars({ week }) {
+  const rows = MARCAP_BUCKETS.map((b, i) => {
+    const max = i === 0 ? Infinity : MARCAP_BUCKETS[i - 1].min;
+    const stocks = week.stocks.filter(s => s.marcap >= b.min && s.marcap < max);
+    return { label: b.label, count: stocks.length, names: stocks.map(s => s.name).join(', ') };
+  });
+  const maxCount = Math.max(...rows.map(r => r.count), 1);
+  return (
+    <div className="scr-bars scr-bars-wide">
+      {rows.map(r => (
+        <div className="scr-bar-row" key={r.label} title={r.names}>
+          <span className="scr-bar-name">{r.label}</span>
+          <span className="scr-bar-track"><i style={{ width: `${(r.count / maxCount) * 100}%` }} /></span>
+          <span className="scr-bar-num">{r.count}<em>{(r.count / week.total * 100).toFixed(0)}%</em></span>
         </div>
       ))}
     </div>
@@ -197,6 +226,9 @@ export default function ScreeningView() {
 
         <h3 className="sec-subtitle">업종별 분포</h3>
         <div className="card"><DistributionBars week={shownWeek} /></div>
+
+        <h3 className="sec-subtitle">시가총액 분포</h3>
+        <div className="card"><MarcapBars week={week} /></div>
 
         <h3 className="sec-subtitle">전체 종목 ({week.total}개)</h3>
         <div className="card"><StockGroups week={shownWeek} /></div>
