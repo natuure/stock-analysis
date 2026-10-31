@@ -19,6 +19,9 @@ const MARCAP_BUCKETS = [
   { label: '소형 (3천억~1조)', min: 3000 },
   { label: '초소형 (3천억 미만)', min: 0 },
 ];
+// 종목서칭 스크리닝 조건 요약(제목과 주차 선택 사이에 작게 표시). 조건을 바꾸면(종목서칭 스킬의
+// 기본 조건 — DATA_PIPELINE.md "종목스크리닝.py" 절) 여기 문구도 같이 고칠 것.
+const CONDITION_TEXT = '조건: 종가 1,000원↑ · 시총 1,000억↑ · 종가 ≥ 50일선 > 150일선·200일선(일봉) · 최근 1년 액면병합 제외 · 최근 2일 거래량 0·스팩/ETF/리츠/우선주 제외';
 const OTHER = '기타';           // 분류 못 한 종목 묶음 — 최다 업종에서 제외, 분포·종목 목록에서는 맨 아래
 
 const weekLabel = (w) => w.weekKey.split('-')[1];                     // "2026-W44" → "W44"
@@ -223,6 +226,7 @@ export default function ScreeningView() {
 
     return (
       <>
+        <p className="scr-conditions">{CONDITION_TEXT}</p>
         <div className="scr-week-picker">
           {weeks.map((w, i) => (
             <button key={w.weekKey} className={`scr-week-btn${i === idx ? ' active' : ''}`}
