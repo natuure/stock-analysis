@@ -617,6 +617,10 @@ tbody tr.chart-row td { text-align: left; white-space: normal; padding: 0; }
 .scr-bar-num { text-align: right; font-weight: 700; color: var(--c-heading); font-variant-numeric: tabular-nums; }
 .scr-bar-num em { font-style: normal; font-weight: 400; font-size: 11px; color: var(--c-muted); margin-left: 4px; }
 .scr-bars-wide .scr-bar-row { grid-template-columns: 132px 1fr 64px; }
+.scr-marcap-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--c-border); }
+.scr-marcap-stats div { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; background: var(--c-surface); border-radius: var(--r-sm); padding: 10px 14px; }
+.scr-marcap-stats span { font-size: 12px; font-weight: 700; color: var(--c-muted); }
+.scr-marcap-stats b { font-size: 16px; font-weight: 700; color: var(--c-heading); font-variant-numeric: tabular-nums; }
 .scr-groups { display: flex; flex-direction: column; gap: 16px; }
 /* 업종별 분포·전체 종목: 5개 업종 높이로 잘라 세로 스크롤(높이는 ScreeningView의 useVisibleRows가 실측해 maxHeight로 지정) */
 .scr-scroll { position: relative; overflow-y: auto; padding-right: 8px; -webkit-overflow-scrolling: touch; }

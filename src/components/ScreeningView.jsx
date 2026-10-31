@@ -67,7 +67,27 @@ function DistributionBars({ week }) {
   );
 }
 
+// 억원 단위 시가총액을 "1조 2,345억" / "8,628억"으로 표기
+function fmtMarcap(eok) {
+  const v = Math.round(eok);
+  const jo = Math.floor(v / 10000);
+  const rest = v % 10000;
+  if (jo === 0) return `${rest.toLocaleString()}억`;
+  return rest ? `${jo.toLocaleString()}조 ${rest.toLocaleString()}억` : `${jo.toLocaleString()}조`;
+}
+
+function marcapStats(stocks) {
+  const caps = stocks.map(s => s.marcap).sort((a, b) => a - b);
+  if (!caps.length) return null;
+  const mid = caps.length >> 1;
+  return {
+    mean: caps.reduce((sum, v) => sum + v, 0) / caps.length,
+    median: caps.length % 2 ? caps[mid] : (caps[mid - 1] + caps[mid]) / 2,
+  };
+}
+
 function MarcapBars({ week }) {
+  const stats = marcapStats(week.stocks);
   const rows = MARCAP_BUCKETS.map((b, i) => {
     const max = i === 0 ? Infinity : MARCAP_BUCKETS[i - 1].min;
     const stocks = week.stocks.filter(s => s.marcap >= b.min && s.marcap < max);
@@ -75,15 +95,23 @@ function MarcapBars({ week }) {
   });
   const maxCount = Math.max(...rows.map(r => r.count), 1);
   return (
-    <div className="scr-bars scr-bars-wide">
-      {rows.map(r => (
-        <div className="scr-bar-row" key={r.label} title={r.names}>
-          <span className="scr-bar-name">{r.label}</span>
-          <span className="scr-bar-track"><i style={{ width: `${(r.count / maxCount) * 100}%` }} /></span>
-          <span className="scr-bar-num">{r.count}<em>{(r.count / week.total * 100).toFixed(0)}%</em></span>
+    <>
+      {stats && (
+        <div className="scr-marcap-stats">
+          <div><span>평균</span><b>{fmtMarcap(stats.mean)}</b></div>
+          <div><span>중위값</span><b>{fmtMarcap(stats.median)}</b></div>
         </div>
-      ))}
-    </div>
+      )}
+      <div className="scr-bars scr-bars-wide">
+        {rows.map(r => (
+          <div className="scr-bar-row" key={r.label} title={r.names}>
+            <span className="scr-bar-name">{r.label}</span>
+            <span className="scr-bar-track"><i style={{ width: `${(r.count / maxCount) * 100}%` }} /></span>
+            <span className="scr-bar-num">{r.count}<em>{(r.count / week.total * 100).toFixed(0)}%</em></span>
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 
