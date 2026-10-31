@@ -2,12 +2,16 @@
 저장분석.py가 MongoDB 저장을 끝낸 직후 자동 호출해 유튜브용 16:9 카드 이미지를 만드는 스크립트.
 단독 실행도 가능: python 유튜브카드.py [YYYY-MM-DD]        # 16:9 카드만
                   python 유튜브카드.py [YYYY-MM-DD] --shorts # 16:9 + 9:16(쇼츠) 카드
+
+주간분석.py도 MongoDB 저장 직후 generate_weekly_shorts_cards()를 자동 호출해 9:16 쇼츠 카드만
+만든다(16:9는 없음, 2026-08-02 도입) — 아래 "주간 쇼츠(9:16) 카드" 절 참고.
 """
 
 import html
 import json
 import math
 import os
+import re
 import sys
 
 from dotenv import load_dotenv
@@ -28,7 +32,8 @@ SHORTS_DIR_NAME = 'shorts'
 TREND_PALETTE = ['#3182f6', '#9b59b6', '#f04452', '#2ecc71', '#f39c12', '#1abc9c']
 ETC_COLOR = '#8b95a1'
 NEWS_CHUNK = 4
-NEWS_TOP_N = 30
+NEWS_TOP_N = 10
+WEEKLY_SHORTS_TOP_N = 30
 SHORTS_THEME_CHUNK = 3
 SHORTS_NEWS_CHUNK = 2
 
@@ -148,12 +153,19 @@ def render_index_card(date, indices):
     return render_base(f'{date} 시장 브리핑', '코스피·코스닥 지수', body)
 
 
+def _stocks_nowrap(text):
+    """주요종목 문자열("종목명(+1.2%), 종목명(+3.4%)")을 종목 단위로 끊지 않고 줄바꿈되게 감싼다 —
+    종목명과 상승률이 서로 다른 줄로 떨어지지 않도록."""
+    parts = [p for p in re.split(r'(?<=\)),\s*', text) if p]
+    return ', '.join(f'<span style="white-space:nowrap;">{esc(p)}</span>' for p in parts)
+
+
 def render_theme_card(date, themes):
     theme_rows = ''.join(f"""
       <div style="background:var(--c-bg); border-radius:var(--r-md); box-shadow:var(--shadow-card); padding:24px 32px; overflow:hidden;">
-        <div style="display:flex; align-items:baseline; gap:18px; white-space:nowrap; overflow:hidden;">
+        <div style="display:flex; align-items:baseline; gap:18px;">
           <span style="font-size:32px; font-weight:800; color:var(--c-heading); flex-shrink:0;">{esc(t.get('테마', ''))}</span>
-          <span style="font-size:24px; font-weight:600; color:var(--c-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{esc(t.get('주요종목', ''))}</span>
+          <span style="font-size:24px; font-weight:600; color:var(--c-muted); flex:1; min-width:0; line-height:1.35;">{_stocks_nowrap(t.get('주요종목', ''))}</span>
         </div>
         <div style="font-size:26px; color:var(--c-body); margin-top:8px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{esc(t.get('핵심재료', ''))}</div>
       </div>""" for t in themes[:6]) or '<div style="font-size:28px; color:var(--c-muted);">테마 정보 없음</div>'
@@ -223,7 +235,7 @@ def render_news_card(subtitle, chunk, start_rank, rate_map):
         name = item.get('종목명', '')
         rate = rate_map.get(name)
         color = _change_color(rate)
-        rate_text = f'{rate:+.2f}%' if rate is not None else ''
+        rate_text = f'{rate:+.1f}%' if rate is not None else ''
         cat = item.get('카테고리', '')
         reason = item.get('상승원인', '')
         rows.append(f"""
@@ -236,8 +248,7 @@ def render_news_card(subtitle, chunk, start_rank, rate_map):
               <span style="font-size:26px; font-weight:700; color:{color};">{rate_text}</span>
               <span style="font-size:20px; font-weight:700; color:var(--c-primary); background:rgba(49,130,246,.14); border-radius:9999px; padding:5px 16px;">{esc(cat)}</span>
             </div>
-            <div style="font-size:25px; color:var(--c-body); line-height:1.45; margin-top:10px;
-                        display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">{esc(reason)}</div>
+            <div style="font-size:25px; color:var(--c-body); line-height:1.45; margin-top:10px;">{esc(reason)}</div>
           </div>
         </div>""")
     body = f'<div style="display:flex; flex-direction:column; gap:18px;">{"".join(rows)}</div>'
@@ -246,14 +257,11 @@ def render_news_card(subtitle, chunk, start_rank, rate_map):
 
 def build_card_specs(date, analysis, indices, rate_map):
     themes = analysis.get('테마', [])
-    vol_items = analysis.get('거래대금', [])
     rate_items = analysis.get('등락률', [])
 
     specs = [
         ('01_지수', render_index_card(date, indices)),
         ('02_테마', render_theme_card(date, themes)),
-        ('03_카테고리_거래대금', render_category_donut_card('거래대금 상위 카테고리 비중', vol_items)),
-        ('04_카테고리_등락률', render_category_donut_card('등락률 상위 카테고리 비중', rate_items)),
     ]
 
     top30 = rate_items[:NEWS_TOP_N]
@@ -261,7 +269,7 @@ def build_card_specs(date, analysis, indices, rate_map):
         chunk = top30[i:i + NEWS_CHUNK]
         start_rank = i + 1
         end_rank = i + len(chunk)
-        idx = i // NEWS_CHUNK + 5
+        idx = i // NEWS_CHUNK + 3
         specs.append((
             f'{idx:02d}_주요뉴스_{start_rank:02d}-{end_rank:02d}',
             render_news_card(f'{start_rank}~{end_rank}위', chunk, start_rank, rate_map),
@@ -285,10 +293,7 @@ def generate_cards(date, analysis, indices=None, news_data=None):
         browser = p.chromium.launch()
         page = browser.new_page(viewport={'width': WIDTH, 'height': HEIGHT})
         for stem, html_str in specs:
-            html_path = os.path.join(date_dir, f'{stem}.html')
             png_path = os.path.join(date_dir, f'{stem}.png')
-            with open(html_path, 'w', encoding='utf-8') as f:
-                f.write(html_str)
             page.set_content(html_str)
             page.screenshot(path=png_path)
             print(f'카드 생성: {png_path}')
@@ -431,7 +436,7 @@ def _news_block_shorts(rank, total, item, rate_map):
     name = item.get('종목명', '')
     rate = rate_map.get(name)
     color = _change_color(rate)
-    rate_text = f'{rate:+.2f}%' if rate is not None else ''
+    rate_text = f'{rate:+.1f}%' if rate is not None else ''
     tint = ('rgba(240,68,82,.10)' if (rate or 0) > 0
             else 'rgba(49,130,246,.10)' if (rate or 0) < 0 else 'rgba(78,89,104,.08)')
     cat = item.get('카테고리', '')
@@ -527,6 +532,107 @@ def generate_shorts_cards(date, analysis, indices=None, news_data=None):
             page.set_content(html_str)
             page.screenshot(path=png_path)
             print(f'쇼츠 카드 생성: {png_path}')
+        browser.close()
+
+
+# ── 주간 쇼츠(9:16) 카드 (2026-08-02 도입) ──────────────────────────────────
+# 주간분석.py는 뉴스분석(상승원인)을 만들지 않으므로 위 일간 쇼츠의 "등락률 상위 종목 뉴스"
+# 카드(상승원인 포함, 2개씩)를 그대로 못 쓴다. 대신 상승원인 없이 순위·종목명·등락률·
+# 카테고리만 보여주는 더 가벼운 카드로 바꾸고, 빈 공간이 남는 만큼 한 페이지에 2개가 아니라
+# 3개씩 담는다(사용자 확정). 지수/카테고리 도넛 카드는 일간 쇼츠 함수(render_index_card_shorts/
+# render_category_donut_card_shorts)를 그대로 재사용 — 두 함수 모두 첫 인자를 eyebrow 배지
+# 텍스트로만 쓰고 날짜 형식을 가정하지 않아 주차 문자열("2026-W31")을 그대로 넣어도 된다.
+# 테마 카드는 주간 데이터에 테마 자체가 없어(Claude/Codex 분석을 거치지 않음) 만들지 않는다.
+
+WEEKLY_SHORTS_RANK_CHUNK = 3
+
+
+def _rank_block_shorts(rank, item):
+    name = item.get('name', '')
+    rate = item.get('changeRate')
+    color = _change_color(rate)
+    rate_text = f'{rate:+.1f}%' if rate is not None else ''
+    tint = ('rgba(240,68,82,.10)' if (rate or 0) > 0
+            else 'rgba(49,130,246,.10)' if (rate or 0) < 0 else 'rgba(78,89,104,.08)')
+    cat = item.get('카테고리', '')
+    cat_chip = (f'<span style="font-size:22px; font-weight:700; color:var(--c-primary); '
+                f'background:rgba(49,130,246,.14); border-radius:9999px; padding:9px 20px;">{esc(cat)}</span>') if cat else ''
+
+    return f"""
+    <div style="background:var(--c-bg); border-radius:24px; box-shadow:var(--shadow-card); padding:32px 40px;
+                display:flex; align-items:center; gap:28px;">
+      <div style="width:76px; height:76px; border-radius:50%; background:{tint}; border:4px solid {color};
+                  display:flex; align-items:center; justify-content:center; font-size:32px; font-weight:800;
+                  color:{color}; flex-shrink:0;">{rank}</div>
+      <div style="flex:1; min-width:0;">
+        <div style="font-size:44px; font-weight:800; color:var(--c-heading); white-space:nowrap;
+                    overflow:hidden; text-overflow:ellipsis;">{esc(name)}</div>
+        <div style="display:flex; align-items:center; gap:14px; margin-top:14px; flex-wrap:wrap;">
+          <span style="font-size:30px; font-weight:800; color:{color}; background:{tint}; border-radius:9999px;
+                       padding:9px 22px;">{_arrow_for(rate)} {rate_text}</span>
+          {cat_chip}
+        </div>
+      </div>
+    </div>"""
+
+
+def render_rank_card_shorts(week_label, start_rank, total, chunk):
+    blocks = ''.join(_rank_block_shorts(start_rank + i, item) for i, item in enumerate(chunk))
+    end_rank = start_rank + len(chunk) - 1
+
+    body = f"""
+    <div class="s-eyebrow">{esc(week_label)}</div>
+    <div class="s-heading">등락률 상위 종목</div>
+    <div class="s-sub">{start_rank}~{end_rank} / {total}위</div>
+    <div style="flex:1; display:flex; flex-direction:column; gap:24px; margin-top:48px; justify-content:center;">{blocks}</div>
+    """
+    return render_shorts_page(body)
+
+
+def build_weekly_shorts_card_specs(week_label, entry):
+    indices = {'kospi': entry.get('kospi'), 'kosdaq': entry.get('kosdaq')}
+    vol_items = entry.get('vol', [])
+    rate_items = entry.get('rate', [])
+
+    specs = [
+        ('01_지수', render_index_card_shorts(week_label, indices)),
+        ('02_카테고리_거래대금', render_category_donut_card_shorts(week_label, '거래대금 상위 카테고리 비중', vol_items)),
+        ('03_카테고리_등락률', render_category_donut_card_shorts(week_label, '등락률 상위 카테고리 비중', rate_items)),
+    ]
+
+    top30 = rate_items[:WEEKLY_SHORTS_TOP_N]
+    n = 3
+    for i in range(0, len(top30), WEEKLY_SHORTS_RANK_CHUNK):
+        chunk = top30[i:i + WEEKLY_SHORTS_RANK_CHUNK]
+        start_rank = i + 1
+        end_rank = i + len(chunk)
+        n += 1
+        specs.append((
+            f'{n:02d}_등락률_{start_rank:02d}-{end_rank:02d}위',
+            render_rank_card_shorts(week_label, start_rank, len(top30), chunk),
+        ))
+    return specs
+
+
+def generate_weekly_shorts_cards(week, entry):
+    """주간분석.py가 MongoDB 저장 직후 자동 호출. entry는 weekly_indices에 저장하는 것과
+    동일한 dict({kospi, kosdaq, vol, rate, ...}) — 별도 조회 없이 그대로 받아 씀."""
+    specs = build_weekly_shorts_card_specs(week, entry)
+
+    week_dir = os.path.join(OUT_DIR, week, SHORTS_DIR_NAME)
+    os.makedirs(week_dir, exist_ok=True)
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={'width': SHORTS_WIDTH, 'height': SHORTS_HEIGHT})
+        for stem, html_str in specs:
+            html_path = os.path.join(week_dir, f'{stem}.html')
+            png_path = os.path.join(week_dir, f'{stem}.png')
+            with open(html_path, 'w', encoding='utf-8') as f:
+                f.write(html_str)
+            page.set_content(html_str)
+            page.screenshot(path=png_path)
+            print(f'주간 쇼츠 카드 생성: {png_path}')
         browser.close()
 
 
