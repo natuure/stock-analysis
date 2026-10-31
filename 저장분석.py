@@ -22,7 +22,7 @@ load_dotenv('.env.local')
 VALID_CATEGORIES = {
     '반도체', '반도체장비', '2차전지', '제약/바이오', '조선/해운', '방산/우주항공', '금융/증권', '건설',
     'AI', '로봇', '에너지/신재생', '전력인프라', '화장품', '호텔/유통', '자동차', '지주사',
-    '피부/미용', '식품', 'IT보안', '엔터/게임', '철강',
+    '피부/미용', '식품', '패션/의류', 'IT보안', '엔터/게임', '철강',
     '정유/화학', '의료AI', '통신', '디스플레이', '가전', '사료', '기타',
 }
 
@@ -31,6 +31,17 @@ VALID_CATEGORIES = {
 # 그 데이터를 "지금 기준"으로 읽는 곳(rs랭킹.py의 카테고리 맵 → RS랭킹 탭·종목스크리닝)만 이 표로
 # 옛 이름을 새 이름으로 바꿔서 쓴다. 새 분석 저장(validate_categories)은 이 옛 이름을 받지 않는다.
 LEGACY_CATEGORY_ALIASES = {'방산': '방산/우주항공', '우주항공': '방산/우주항공', '항공': '방산/우주항공'}
+
+
+def resolve_category(cat, candidate=None):
+    """저장된 (카테고리, 신규카테고리후보)를 "지금 기준" 카테고리로 해석해 (카테고리, 후보)로 반환.
+    ① 옛 이름(LEGACY_CATEGORY_ALIASES)은 새 이름으로. ② `기타`+후보인데 그 후보가 이제 정식
+    카테고리(VALID_CATEGORIES)가 됐으면(예: 2026-10-31 `패션/의류` 신설) 그 카테고리로 — 이미 저장된
+    일간 분석을 백필하지 않고도 후보로 쌓아뒀던 종목이 정식 카테고리로 자동 편입된다."""
+    cat = LEGACY_CATEGORY_ALIASES.get(cat, cat)
+    if cat == '기타' and candidate and candidate != '기타' and candidate in VALID_CATEGORIES:
+        return candidate, None
+    return cat, candidate
 
 
 def validate_categories(analysis):
@@ -45,6 +56,8 @@ def validate_categories(analysis):
                 problems.append(f'{key}[{i}] {name}: 알 수 없는 카테고리 "{cat}"')
             elif cat != '기타' and item.get('신규카테고리후보'):
                 problems.append(f'{key}[{i}] {name}: 카테고리가 "기타"가 아닌데 신규카테고리후보가 있음')
+            elif cat == '기타' and item.get('신규카테고리후보') in VALID_CATEGORIES:
+                problems.append(f'{key}[{i}] {name}: 신규카테고리후보 "{item["신규카테고리후보"]}"는 이미 정식 카테고리 — 카테고리에 바로 쓸 것')
     return problems
 
 

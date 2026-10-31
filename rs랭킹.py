@@ -167,8 +167,9 @@ def fetch_global_category_map():
                 name = item.get('종목명')
                 cat = item.get('카테고리')
                 if name and cat:
-                    cat = 저장분석.LEGACY_CATEGORY_ALIASES.get(cat, cat)  # 2026-10-31 개편 이전 옛 이름 → 새 이름
-                    cat_map[name] = {'카테고리': cat, '신규카테고리후보': item.get('신규카테고리후보')}
+                    # 개편 이전 옛 이름·이제 정식이 된 후보를 지금 기준으로 해석(저장분석.resolve_category)
+                    cat, cand = 저장분석.resolve_category(cat, item.get('신규카테고리후보'))
+                    cat_map[name] = {'카테고리': cat, '신규카테고리후보': cand}
     return cat_map
 
 
@@ -194,9 +195,11 @@ def fetch_category_cache_map(db):
     # 바꿔서 쓴다(LEGACY_CATEGORY_ALIASES) — 그 종목들을 전부 다시 분류하지 않아도 되게 함.
     valid = set(저장분석.VALID_CATEGORIES) | set(저장분석.LEGACY_CATEGORY_ALIASES)
     docs = db[RS_CATEGORY_CACHE_COLLECTION].find({'카테고리': {'$in': list(valid)}})
-    return {d['_id']: {'카테고리': 저장분석.LEGACY_CATEGORY_ALIASES.get(d['카테고리'], d['카테고리']),
-                      '신규카테고리후보': d.get('신규카테고리후보')}
-            for d in docs}
+    out = {}
+    for d in docs:
+        cat, cand = 저장분석.resolve_category(d['카테고리'], d.get('신규카테고리후보'))
+        out[d['_id']] = {'카테고리': cat, '신규카테고리후보': cand}
+    return out
 
 
 def report_stale_category_cache(db):
