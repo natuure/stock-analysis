@@ -5,7 +5,7 @@
 
 /종목서칭 스킬(주식자동매매 프로젝트, 일봉 이동평균 정배열 스크리닝)이 만든
 `분석결과/종목서칭_{기준일}.csv` 중 가장 최근 파일을 읽어, 종목을 카테고리(저장분석.
-VALID_CATEGORIES, 앱 전체가 쓰는 28개 업종 분류)별로 묶고 **주 1회** MongoDB
+VALID_CATEGORIES, 앱 전체가 쓰는 29개 업종 분류)별로 묶고 **주 1회** MongoDB
 stock_screening 컬렉션(_id = weekKey, 예: "2026-W44")에 저장한다. 웹앱 "종목스크리닝" 탭
 (api/getScreening.js → ScreeningView.jsx)이 이 컬렉션을 읽어 주차별 종목 수 추이와 업종
 추이를 보여준다.
