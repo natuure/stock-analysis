@@ -50,6 +50,9 @@ Python (로컬 실행, 고정 IP)
                   임포트해 유니버스·카테고리 목록·attach_categories() 재사용) + rs_ranking 컬렉션
                   단일 문서(_id='latest') 저장(2026-07-11 도입, 같은 날 주간분석.py에서 분리 —
                   웹앱 "RS랭킹" 탭 전용, 주간뷰에는 더 이상 표시 안 함, HISTORY.md 참고)
+  종목스크리닝.py ← /종목서칭 정배열 스크리닝 결과(주식자동매매 프로젝트 CSV)를 28개 카테고리로 분류해
+                  주 1회 stock_screening 컬렉션에 저장(rs랭킹.py·주간분석.py·저장분석.py 임포트해 재사용,
+                  2026-10-31 도입, 웹앱 "종목스크리닝" 탭 전용, 메인 흐름과 독립)
   종목분석.py   ← DART로 단일 종목 재무제표 수집 + MongoDB company_analysis 저장
                   (웹앱 "종목 분석" 탭 검색용, DATA_PIPELINE.md 참고 — 2026-06-27부터는
                   수동 실행 없이도 웹에서 미분석 종목을 즉석 분석 가능, api/analyzeCompany.js)
@@ -87,6 +90,8 @@ Python (로컬 실행, 고정 IP)
 │   │                             등락률 카테고리 TOP5 추이" 표 2개용)
 │   ├── getRsRanking.js         # GET → rs_ranking 컬렉션의 단일 문서(_id='latest')를 그대로 반환
 │   │                             (2026-07-11 도입, "RS랭킹" 탭 전용 — 날짜/주차 파라미터 없음)
+│   ├── getScreening.js         # GET → stock_screening 컬렉션의 주차별 문서 전체를 (연도, 주차) 순으로 정렬해
+│   │                             반환(2026-10-31 도입, "종목스크리닝" 탭 전용)
 │   ├── getStockMarketInterest.js  # GET ?code=&name= → 종목 하나의 RS Score 10주 추이(rs_ranking의
 │   │                             주차별 히스토리) + 최근 15거래일 등락률 상위50 등장 + 카테고리 +
 │   │                             카테고리 TOP5 등장을 한 번에 계산해 반환(2026-07-11 도입, "종목 분석"
@@ -123,6 +128,9 @@ Python (로컬 실행, 고정 IP)
 │       │                       (EtfRankTable 다음)에 있었으나, RS Score 계산이 주간분석.py에서
 │       │                       rs랭킹.py로 분리되며 이 컴포넌트도 "RS랭킹" 탭 전용으로 옮겨짐
 │       │                       ([HISTORY.md](HISTORY.md) 참고)
+│       ├── ScreeningView.jsx  # 상단 "종목스크리닝" 탭의 내용 — /api/getScreening을 자체 fetch해 주차 선택,
+│       │                       업종별 분포·전체 종목, 주차별 종목 수·상위 업종·업종×주차 추이를 표시
+│       │                       (2026-10-31 도입, 구 "조건 검색" 빈 탭, TrendChart 재사용)
 │       ├── CompanyOverviewView.jsx  # 기업개요 — PER/PBR/ROE/EV·EBITDA + 적정주가 슬라이더 4종 (data prop으로 받음)
 │       └── TrendChart.jsx   # 의존성 없는 SVG 추이 차트(막대/꺾은선), StockAnalysis.jsx·Analysis.jsx 공용
 ├── 뉴스분석.py              # FinanceDataReader 수집 + Naver 뉴스 + stock_data 저장
@@ -135,6 +143,7 @@ Python (로컬 실행, 고정 IP)
 ├── rs랭킹.py                # 전종목 RS Score 백분위 90 이상 랭킹 → MongoDB rs_ranking 컬렉션
 │                             단일 문서(_id='latest') 저장(2026-07-11 도입, 같은 날 주간분석.py에서
 │                             분리 — 뉴스분석.py·저장분석.py·주간분석.py를 import해 재사용)
+├── 종목스크리닝.py          # /종목서칭 결과 CSV → 카테고리 분류 → stock_screening 주차별 저장(2026-10-31 도입)
 ├── 종목분석.py              # DART로 단일 종목 재무제표 수집 → 종목분석결과/*.json (gitignore) + MongoDB company_analysis 저장
 │                             (analyze_one()은 주도주분석.py가 일괄 호출용으로 재사용, 2026-06-27)
 ├── 주도주분석.py            # 그날 거래대금·등락률 상위 종목(최대 100개, 중복 제거)을 종목분석.py로
@@ -167,6 +176,7 @@ Python (로컬 실행, 고정 IP)
 | `monthly_indices` | 월간 코스피/코스닥 변동률 + 월간 거래대금/등락률 상위 50 + 월간 ETF 등락률 상위 15(`etfRank`) — `월간분석.py`가 채움. `weekly_indices`와 완전히 동일한 문서 구조이며 `_id`만 `"YYYY-MM"`(2026-07-26 도입) | `{ _id: "YYYY-MM", kospi: {...}, kosdaq: {...}, vol: [...50], rate: [...50], lastTradingDate: "YYYY-MM-DD", etfRank: [...15] }` |
 | `rs_ranking` | 두 종류 문서가 공존(2026-07-11 도입). **① `_id: "latest"`**: RS Score 백분위 90 이상 종목만(+카테고리) — `rs랭킹.py`가 매 실행마다 덮어씀, "RS랭킹" 탭(`api/getRsRanking.js`)이 읽음. **② `_id: "YYYY-W##"`(주차별 히스토리)**: 그 주 계산 성공한 전종목(임계값 무관, 카테고리 없음) — `api/getStockMarketInterest.js`가 특정 종목의 10주 추이를 조회할 때 읽음 | `{ _id: "latest", asOfDate, weekKey, rsRank: [{rank, code, name, rsScore, 카테고리?, 신규카테고리후보?}], updatedAt }` 또는 `{ _id: "YYYY-W##", asOfDate, weekKey, scores: [{code, name, rsScore}], updatedAt }` |
 | `rs_category_cache` | RS Score 랭킹 카테고리 영속 캐시 — `ai_analysis`에 한 번도 등장한 적 없는 RS 전용 종목의 분류를 Claude Code가 조사해 저장, 다음 실행 이후로도 재사용(2026-07-11 도입, `rs랭킹.py`의 `rs_ranking()`이 읽음, [DATA_PIPELINE.md](DATA_PIPELINE.md) "RS 랭킹 카테고리 영속 캐시" 절 참고). `카테고리`는 `저장분석.VALID_CATEGORIES`(28개)를 그대로 따름 — 조회 시점에 그 목록에 없는 값(카테고리 개편으로 무효화)은 자동 제외돼 재분류 대상으로 복귀 | `{ _id: "종목명", code, 카테고리, 신규카테고리후보?, classifiedAt: "YYYY-MM-DD", source: "claude_code_manual" }` |
+| `stock_screening` | 종목스크리닝(`/종목스크리닝` 스킬 → `종목스크리닝.py`)의 주차별 결과 — 주 1회, 문서 1개/주차. 금·토·일 실행은 이번 주, 월~목 실행은 직전 주 주차로 저장하고 이미 있으면 저장 안 함(2026-10-31 도입, "종목스크리닝" 탭이 `api/getScreening.js`로 읽음, [DATA_PIPELINE.md](DATA_PIPELINE.md) "종목스크리닝.py" 절 참고) | `{ _id: "YYYY-W##", weekKey, weekStart, asOfDate, condition, total, categoryCounts: [{category, count}], stocks: [{code, name, market, close, marcap, 카테고리, 신규카테고리후보?}], savedAt }` |
 | `company_analysis` | 종목별 DART 재무제표 + KIS 현재가 (종목분석.py 수동 실행, `주도주분석.py` 일괄 실행, **또는** `api/analyzeCompany.js` 즉석분석이 채움, "종목 분석" 탭용). **`quote`는 채워진 시점에 박힌 값이라 폴백 전용** — 실제 화면에는 `api/getCompanyOverview.js`가 조회 시점에 KIS로 새로 받아온 현재가가 표시됨(2026-06-25) | `{ _id: "종목코드", name, date, corp_code, quote, annual_financials, quarterly_financials, latest_report }` |
 | `dart_corp_codes` | DART 상장기업 corp_code 매핑(`기업코드동기화.py`가 로컬 `_dart_corp_codes.json`을 1회 옮김, `api/analyzeCompany.js`가 종목명→corp_code 조회에 사용 — Vercel엔 영속 파일시스템이 없어 로컬 JSON 캐싱 패턴을 못 씀, 2026-06-27) | `{ _id: "map", data: { "회사명": { corp_code, stock_code }, ... } }` 단일 문서 |
 
@@ -182,6 +192,7 @@ Python (로컬 실행, 고정 IP)
 | `/api/getAnalysis` | GET | `?date=YYYY-MM-DD` → ai_analysis 반환 |
 | `/api/getThemeTrend` | GET | `?days=`(기본 14, 최대 90) → ai_analysis에서 최근 N일의 `거래대금`/`등락률` 배열만 프로젝션해 반환(테마 제외, 날짜 내림차순, 2026-06-28부터 `테마`에서 `거래대금`/`등락률`로 교체) — "거래대금·등락률 분석" 탭의 거래대금·등락률 카테고리 TOP5 추이 표 2개용 |
 | `/api/getRsRanking` | GET | 파라미터 없음 → `rs_ranking` 컬렉션의 단일 문서(`_id='latest'`) 반환(2026-07-11 도입) — "RS랭킹" 탭 전용 |
+| `/api/getScreening` | GET | 파라미터 없음 → `stock_screening`의 주차별 문서 전체를 (연도, 주차) 오름차순으로 반환(2026-10-31 도입) — "종목스크리닝" 탭 전용 |
 | `/api/getStockMarketInterest` | GET | `?code=&name=` 필수 → RS Score 10주 추이 + 최근 15거래일 등락률 상위50 등장 + 카테고리 + 카테고리 TOP5 등장을 계산해 반환(2026-07-11 도입) — "종목 분석" 탭 "시장관심도" 전용 |
 | `/api/analyzeStocks` | POST | Claude API 프록시 (현재 미사용) |
 | `/api/candles` | GET | `?symbol=&date=` → KIS Open API로 일봉 캔들 85개 실시간 조회. 실패 시에만 MongoDB `candles`(토스 캐시) 폴백 |

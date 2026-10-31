@@ -8,6 +8,7 @@ import Tables from './components/Tables';
 import StockAnalysis from './components/StockAnalysis';
 import EtfRankTable from './components/EtfRankTable';
 import RsRankingView from './components/RsRankingView';
+import ScreeningView from './components/ScreeningView';
 import {
   dateToISO, CACHE_VERSION,
   saveAnalysisToStorage, loadAnalysisFromStorage,
@@ -294,7 +295,7 @@ export default function App() {
       )}
       {topTab === 'stock'    && <StockAnalysis target={stockJumpTarget} />}
       {topTab === 'rsRanking' && <RsRankingView />}
-      {topTab === 'screener' && <div className="tab-placeholder">조건 검색 — 준비 중입니다</div>}
+      {topTab === 'screener' && <ScreeningView />}
     </div>
   );
 }

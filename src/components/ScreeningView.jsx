@@ -1,0 +1,202 @@
+import { useState, useEffect } from 'react';
+import { TrendChart, TREND_PALETTE } from './TrendChart';
+
+// 상단 "종목스크리닝" 탭의 내용(2026-10-31 도입, 구 "조건 검색" 빈 탭 이름 변경 후 채움).
+// RsRankingView.jsx와 같은 패턴 — App.jsx의 상태 관리 없이 자체적으로 /api/getScreening을
+// fetch한다. 데이터 원본은 종목스크리닝.py가 주 1회 쌓는 MongoDB stock_screening 컬렉션
+// (/종목서칭 정배열 스크리닝 결과를 30개 카테고리로 분류) — DATA_PIPELINE.md
+// "종목스크리닝.py" 절 참고.
+const TREND_WEEKS = 10;       // 추이 차트·표에 보여줄 최근 주차 수
+const TREND_TOP_CATEGORIES = 5; // 업종 추이 차트에 그릴 선택 주차의 상위 업종 수
+
+const weekLabel = (w) => w.weekKey.split('-')[1];                     // "2026-W44" → "W44"
+const mmdd = (iso) => iso.slice(5).replace('-', '/');                 // "2026-10-26" → "10/26"
+function weekRange(w) {
+  if (!w.weekStart) return '';
+  const end = new Date(w.weekStart);
+  end.setDate(end.getDate() + 6);
+  const endIso = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
+  return `${mmdd(w.weekStart)} ~ ${mmdd(endIso)}`;
+}
+const countOf = (w, category) => w.categoryCounts.find(c => c.category === category)?.count || 0;
+
+function DistributionBars({ week }) {
+  const max = Math.max(...week.categoryCounts.map(c => c.count), 1);
+  return (
+    <div className="scr-bars">
+      {week.categoryCounts.map(c => (
+        <div className="scr-bar-row" key={c.category}>
+          <span className="scr-bar-name">{c.category}</span>
+          <span className="scr-bar-track"><i style={{ width: `${(c.count / max) * 100}%` }} /></span>
+          <span className="scr-bar-num">{c.count}<em>{(c.count / week.total * 100).toFixed(0)}%</em></span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function StockGroups({ week }) {
+  return (
+    <div className="scr-groups">
+      {week.categoryCounts.map(c => (
+        <div className="scr-group" key={c.category}>
+          <div className="scr-group-title">{c.category}<span>{c.count}</span></div>
+          <div className="scr-chips">
+            {week.stocks.filter(s => s.카테고리 === c.category).map(s => (
+              <span className="scr-chip" key={s.code}
+                title={`${s.code} · ${s.market} · 종가 ${s.close.toLocaleString()}원 · 시총 ${s.marcap.toLocaleString()}억`}>
+                {s.name}
+              </span>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// 업종 × 주차 종목 수 표 — 전주 대비 증가는 빨강, 감소는 파랑(거래대금 카테고리 TOP5 순위표와
+// 같은 cat-trend-* 클래스 재사용), 이번 주에 처음 등장한 업종은 초록 배경.
+function CategoryTrendTable({ weeks, selected }) {
+  const recent = weeks.slice(-TREND_WEEKS);
+  const cats = [...new Set(recent.flatMap(w => w.categoryCounts.map(c => c.category)))];
+  const total = (cat) => recent.reduce((sum, w) => sum + countOf(w, cat), 0);
+  cats.sort((a, b) => countOf(selected, b) - countOf(selected, a) || total(b) - total(a) || a.localeCompare(b, 'ko'));
+
+  return (
+    <div className="cat-trend-block">
+      <div className="trend-chart-title">업종별 종목 수 (최근 {recent.length}주)</div>
+      <div className="cat-trend-wrap">
+        <table className="cat-trend-table">
+          <thead>
+            <tr>
+              <th className="cat-trend-rank-col">업종</th>
+              {recent.map(w => <th key={w.weekKey}>{weekLabel(w)}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {cats.map(cat => (
+              <tr key={cat}>
+                <td className="cat-trend-rank-col">{cat}</td>
+                {recent.map((w, i) => {
+                  const n = countOf(w, cat);
+                  const prev = i > 0 ? countOf(recent[i - 1], cat) : null;
+                  let cls = '';
+                  if (prev !== null) {
+                    if (prev === 0 && n > 0) cls = 'cat-trend-new';
+                    else if (n > prev) cls = 'cat-trend-up';
+                    else if (n < prev) cls = 'cat-trend-down';
+                  }
+                  return <td key={w.weekKey} className={cls}>{n || '-'}</td>;
+                })}
+              </tr>
+            ))}
+            <tr>
+              <td className="cat-trend-rank-col">합계</td>
+              {recent.map(w => <td key={w.weekKey}><b>{w.total}</b></td>)}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+export default function ScreeningView() {
+  const [weeks, setWeeks] = useState(null);
+  const [status, setStatus] = useState('loading'); // loading | ready | error
+  const [idx, setIdx] = useState(0);
+
+  useEffect(() => {
+    fetch('/api/getScreening')
+      .then(r => r.json())
+      .then(({ weeks }) => {
+        setWeeks(weeks || []);
+        setIdx(Math.max((weeks || []).length - 1, 0));
+        setStatus('ready');
+      })
+      .catch(() => setStatus('error'));
+  }, []);
+
+  const body = () => {
+    if (status === 'loading') return <div className="tab-placeholder">불러오는 중...</div>;
+    if (status === 'error') return <div className="tab-placeholder">조회 중 오류가 발생했습니다.</div>;
+    if (!weeks.length) {
+      return <div className="tab-placeholder">스크리닝 데이터가 아직 없습니다. /종목스크리닝 을 먼저 실행해 주세요.</div>;
+    }
+
+    const week = weeks[idx];
+    const prev = idx > 0 ? weeks[idx - 1] : null;
+    const diff = prev ? week.total - prev.total : null;
+    const recent = weeks.slice(-TREND_WEEKS);
+    const topCats = week.categoryCounts.slice(0, TREND_TOP_CATEGORIES).map(c => c.category);
+
+    return (
+      <>
+        <div className="scr-week-picker">
+          {weeks.map((w, i) => (
+            <button key={w.weekKey} className={`scr-week-btn${i === idx ? ' active' : ''}`}
+              onClick={() => setIdx(i)}>{weekLabel(w)}</button>
+          ))}
+        </div>
+
+        <div className="scr-summary">
+          <div className="card scr-stat">
+            <div className="scr-stat-label">{weekLabel(week)} 통과 종목</div>
+            <div className="scr-stat-value">{week.total}<small>개</small></div>
+            {diff !== null && (
+              <div className={`scr-stat-sub ${diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat'}`}>
+                전주 대비 {diff > 0 ? '+' : ''}{diff}
+              </div>
+            )}
+          </div>
+          <div className="card scr-stat">
+            <div className="scr-stat-label">최다 업종</div>
+            <div className="scr-stat-value scr-stat-text">{week.categoryCounts[0]?.category || '-'}</div>
+            <div className="scr-stat-sub flat">{week.categoryCounts[0]?.count || 0}개</div>
+          </div>
+          <div className="card scr-stat">
+            <div className="scr-stat-label">기준일</div>
+            <div className="scr-stat-value scr-stat-text">{week.asOfDate ? mmdd(week.asOfDate) : '-'}</div>
+            <div className="scr-stat-sub flat">{weekRange(week)}</div>
+          </div>
+        </div>
+
+        <h3 className="sec-subtitle">업종별 분포</h3>
+        <div className="card"><DistributionBars week={week} /></div>
+
+        <h3 className="sec-subtitle">전체 종목 ({week.total}개)</h3>
+        <div className="card"><StockGroups week={week} /></div>
+
+        <h2 className="sec-title">주차별 추이</h2>
+        <TrendChart
+          title="통과 종목 수"
+          type="line"
+          showValues
+          valueFormatter={v => String(v)}
+          periods={recent.map(w => ({ label: weekLabel(w), total: w.total }))}
+          metrics={[{ key: 'total', label: '통과 종목 수', color: TREND_PALETTE[0] }]}
+        />
+        <TrendChart
+          title={`상위 업종 종목 수 (${weekLabel(week)} 기준 상위 ${topCats.length}개)`}
+          type="line"
+          valueFormatter={v => String(v)}
+          periods={recent.map(w => Object.fromEntries([
+            ['label', weekLabel(w)], ...topCats.map(c => [c, countOf(w, c)]),
+          ]))}
+          metrics={topCats.map((c, i) => ({ key: c, label: c, color: TREND_PALETTE[i % TREND_PALETTE.length] }))}
+        />
+        <CategoryTrendTable weeks={weeks} selected={week} />
+      </>
+    );
+  };
+
+  return (
+    <main className="screening">
+      <h2 className="sec-title">
+        종목스크리닝<span className="sec-sub">일봉 정배열 종목 · 주 1회 저장</span>
+      </h2>
+      {body()}
+    </main>
+  );
+}

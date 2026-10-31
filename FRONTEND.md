@@ -8,8 +8,21 @@
   2. **종목 분석** — `StockAnalysis.jsx`, 아래 절 참고
   3. **RS랭킹**(`key: 'rsRanking'`, 2026-07-11 "차트분석"에서 이름 변경) — `RsRankingView.jsx`,
      아래 절 참고
-  4. **조건 검색** — 내용 미정, "준비 중" placeholder만 표시
+  4. **종목스크리닝**(`key: 'screener'`, 2026-10-31 "조건 검색"에서 이름 변경) — `ScreeningView.jsx`,
+     아래 절 참고
 - 탭 전환은 클라이언트 상태로만 처리 (URL 라우팅 없음, react-router 미사용)
+
+### ScreeningView.jsx (2026-10-31 도입)
+- "종목스크리닝" 탭의 내용. `RsRankingView.jsx`처럼 App.jsx 상태 없이 자체적으로 `/api/getScreening`을
+  fetch(`stock_screening` 컬렉션의 주차별 문서 전체, 데이터 원천은 `종목스크리닝.py` —
+  [DATA_PIPELINE.md](DATA_PIPELINE.md) 참고). 데이터가 없으면 "/종목스크리닝 을 먼저 실행해 주세요" placeholder.
+- 위에서 아래: ① 주차 선택 버튼(`.scr-week-btn`, 기본 최신 주차) ② 요약 카드 3개(통과 종목 수+전주
+  대비 증감 / 최다 업종 / 기준일+주 범위, `.scr-stat`) ③ 업종별 분포 가로 막대(개수·비중) ④ 전체 종목
+  (업종별로 묶은 이름 칩, 칩에 마우스를 올리면 코드·시장·종가·시총 `title`) ⑤ "주차별 추이" —
+  통과 종목 수 꺾은선, 선택 주차 기준 상위 5개 업종 꺾은선(둘 다 `TrendChart.jsx` 재사용), 업종×주차
+  종목 수 표(거래대금 카테고리 TOP5 순위표의 `cat-trend-*` 클래스 재사용: 전주보다 증가 빨강·감소
+  파랑·신규 등장 초록 배경). 추이는 최근 10주만(`TREND_WEEKS`), 선택 주차를 바꿔도 추이 구간은 고정.
+- 새 CSS는 `styles.css` 맨 끝 `.scr-*` 블록(767px 이하에서 카드·막대 폭 축소).
 
 ### StockAnalysis.jsx (2026-06-24 도입, 2026-06-25 종목 검색 + 손익계산서·재무상태표 연동 추가)
 - "종목 분석" 탭의 내용. 맨 위에 종목명 검색창(`.stock-search`, `<input list=>` + `<datalist>`로
