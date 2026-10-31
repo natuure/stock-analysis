@@ -69,9 +69,10 @@ def resolve_as_of_date(lookback_days=10):
     KOSPI 지수 데이터 기준으로 계산한다. 주간분석.py의 resolve_target_week()과 달리
     "그 주 전체 거래일 목록"이 필요 없어(RS Score는 as_of_date 하나만 씀) 더 단순한
     버전으로 독립 구현했다."""
-    today = datetime.now().date()
-    df = fdr.DataReader('KS11', today - timedelta(days=lookback_days), today)
-    if df.empty:
+    # FDR 지수 캐시(data/index)가 며칠~열흘 넘게 멈추는 경우가 있어(2026-09-17 이후 정지 확인)
+    # Naver 우선·FDR 폴백인 뉴스분석.fetch_index_history()를 쓴다(주간분석.py와 동일).
+    df = 뉴스분석.fetch_index_history('KS11', days=lookback_days)
+    if df is None or df.empty:
         return None
     return df.index[-1].date()
 
@@ -166,6 +167,7 @@ def fetch_global_category_map():
                 name = item.get('종목명')
                 cat = item.get('카테고리')
                 if name and cat:
+                    cat = 저장분석.LEGACY_CATEGORY_ALIASES.get(cat, cat)  # 2026-10-31 개편 이전 옛 이름 → 새 이름
                     cat_map[name] = {'카테고리': cat, '신규카테고리후보': item.get('신규카테고리후보')}
     return cat_map
 
@@ -188,9 +190,12 @@ def fetch_category_cache_map(db):
     유효해짐 — 삭제 방식이었다면 사라졌을 복구성을 의도적으로 남겨둔 설계다."""
     if db is None:
         return {}
-    docs = db[RS_CATEGORY_CACHE_COLLECTION].find(
-        {'카테고리': {'$in': list(저장분석.VALID_CATEGORIES)}})
-    return {d['_id']: {'카테고리': d['카테고리'], '신규카테고리후보': d.get('신규카테고리후보')}
+    # 2026-10-31 개편 이전에 저장된 옛 이름(방산/우주항공/항공)은 무효 처리하지 않고 새 이름으로
+    # 바꿔서 쓴다(LEGACY_CATEGORY_ALIASES) — 그 종목들을 전부 다시 분류하지 않아도 되게 함.
+    valid = set(저장분석.VALID_CATEGORIES) | set(저장분석.LEGACY_CATEGORY_ALIASES)
+    docs = db[RS_CATEGORY_CACHE_COLLECTION].find({'카테고리': {'$in': list(valid)}})
+    return {d['_id']: {'카테고리': 저장분석.LEGACY_CATEGORY_ALIASES.get(d['카테고리'], d['카테고리']),
+                      '신규카테고리후보': d.get('신규카테고리후보')}
             for d in docs}
 
 
@@ -204,7 +209,8 @@ def report_stale_category_cache(db):
     if db is None:
         return []
     docs = list(db[RS_CATEGORY_CACHE_COLLECTION].find({}, {'_id': 1, '카테고리': 1}))
-    stale = [d for d in docs if d.get('카테고리') not in 저장분석.VALID_CATEGORIES]
+    stale = [d for d in docs if d.get('카테고리') not in 저장분석.VALID_CATEGORIES
+             and d.get('카테고리') not in 저장분석.LEGACY_CATEGORY_ALIASES]
     if stale:
         names = ', '.join(d['_id'] for d in stale)
         print(f'[알림] 카테고리 목록 개편 감지 — rs_category_cache에서 {len(stale)}개 '

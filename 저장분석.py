@@ -20,11 +20,17 @@ load_dotenv('.env.local')
 # DATA_PIPELINE.md의 28개 카테고리 목록과 손으로 동기화해야 함 — 목록을 추가/삭제/이름
 # 변경하면 여기도 같이 고쳐야 새로 분류한 정상 데이터가 저장 거부당하지 않음.
 VALID_CATEGORIES = {
-    '반도체', '반도체장비', '2차전지', '제약/바이오', '조선/해운', '방산', '금융/증권', '건설',
+    '반도체', '반도체장비', '2차전지', '제약/바이오', '조선/해운', '방산/우주항공', '금융/증권', '건설',
     'AI', '로봇', '에너지/신재생', '전력인프라', '화장품', '호텔/유통', '자동차', '지주사',
-    '우주항공', '피부/미용', '식품', 'IT보안', '엔터/게임', '철강',
-    '정유/화학', '의료AI', '항공', '통신', '디스플레이', '가전', '사료', '기타',
+    '피부/미용', '식품', 'IT보안', '엔터/게임', '철강',
+    '정유/화학', '의료AI', '통신', '디스플레이', '가전', '사료', '기타',
 }
+
+# 2026-10-31 개편(30개→28개): 방산·우주항공·항공을 '방산/우주항공' 하나로 통합. 사용자 결정으로
+# 2026-10-31 이전에 저장된 ai_analysis·rs_category_cache는 옛 이름 그대로 두고 백필하지 않으므로,
+# 그 데이터를 "지금 기준"으로 읽는 곳(rs랭킹.py의 카테고리 맵 → RS랭킹 탭·종목스크리닝)만 이 표로
+# 옛 이름을 새 이름으로 바꿔서 쓴다. 새 분석 저장(validate_categories)은 이 옛 이름을 받지 않는다.
+LEGACY_CATEGORY_ALIASES = {'방산': '방산/우주항공', '우주항공': '방산/우주항공', '항공': '방산/우주항공'}
 
 
 def validate_categories(analysis):
@@ -40,6 +46,62 @@ def validate_categories(analysis):
             elif cat != '기타' and item.get('신규카테고리후보'):
                 problems.append(f'{key}[{i}] {name}: 카테고리가 "기타"가 아닌데 신규카테고리후보가 있음')
     return problems
+
+
+def slim_indices(indices):
+    """stock_data.indices에서 분석결과 JSON에 넣을 코스피/코스닥 기본 3개 필드만 추린다
+    (trend/signals 같은 추가 계산값은 제외)."""
+    slim = {}
+    for key in ('kospi', 'kosdaq'):
+        item = (indices or {}).get(key)
+        if item and item.get('close') is not None:
+            slim[key] = {f: round(item[f], 2) for f in ('close', 'change', 'changeRate') if item.get(f) is not None}
+    return slim
+
+
+TOP_RATE_COUNT = 10  # 등락률 상위 몇 위까지 `상승률`을 적을지
+
+
+def fill_top_rates(analysis, news_data, count=TOP_RATE_COUNT):
+    """analysis.등락률 상위 count개 항목에 `상승률`("+18.9%" — 소수점 아래 첫째 자리까지)을
+    뉴스데이터의 changeRate로 채운다(종목명 매칭, 종목명 바로 다음 키). 바뀐 게 있으면 True."""
+    rate_map = build_change_rate_map(news_data)
+    changed = False
+    items = analysis.get('등락률', [])
+    for i, item in enumerate(items[:count]):
+        rate = rate_map.get(item.get('종목명'))
+        if rate is None:
+            continue
+        text = f'{rate:+.1f}%'
+        if item.get('상승률') == text:
+            continue
+        rebuilt = {}
+        for k, v in item.items():
+            if k != '상승률':
+                rebuilt[k] = v
+            if k == '종목명':
+                rebuilt['상승률'] = text
+        if '상승률' not in rebuilt:
+            rebuilt['상승률'] = text
+        items[i] = rebuilt
+        changed = True
+    return changed
+
+
+def sync_json_file(path, data, indices, force=False):
+    """분석결과 JSON에 그날의 코스피/코스닥 정보(`indices`, date 바로 다음 키)를 채워 넣고
+    (이미 같은 값이면 안 건드림), data가 다른 이유(예: 상승률)로 바뀌었으면(force) 같이 저장한다.
+    지수는 stock_data가 원본이라 거기서 가져온다."""
+    slim = slim_indices(indices)
+    if not force and (not slim or data.get('indices') == slim):
+        return
+    rest = {k: v for k, v in data.items() if k not in ('date', 'indices')}
+    keep = slim or data.get('indices')
+    updated = {'date': data['date'], **({'indices': keep} if keep else {}), **rest}
+    with open(path, 'w', encoding='utf-8', newline='\r\n') as f:
+        json.dump(updated, f, ensure_ascii=False, indent=2)
+        f.write('\n')
+    print(f'분석결과 JSON 갱신(코스피/코스닥 지수·상승률): {path}')
 
 
 def find_latest():
@@ -165,6 +227,12 @@ def main():
             print(' -', p)
         sys.exit(1)
 
+    news_path = os.path.join('분석결과', f"뉴스데이터_{date.replace('-', '')}.json")
+    rates_changed = False
+    if os.path.exists(news_path):
+        with open(news_path, 'r', encoding='utf-8') as f:
+            rates_changed = fill_top_rates(analysis, json.load(f))
+
     uri = os.getenv('MONGODB_URI')
     if not uri:
         print('오류: MONGODB_URI 환경변수가 없습니다.')
@@ -185,17 +253,16 @@ def main():
 
     save_digest(date, analysis)
 
+    sync_json_file(path, data, indices, force=rates_changed)
+
     try:
         import 유튜브카드
         유튜브카드.generate_cards(date, analysis, indices=indices)
     except Exception as e:
         print(f'경고: 유튜브 카드(16:9) 생성 실패({e}) — MongoDB 저장/digest는 정상 완료됨.')
 
-    try:
-        import 유튜브카드
-        유튜브카드.generate_shorts_cards(date, analysis, indices=indices)
-    except Exception as e:
-        print(f'경고: 유튜브 쇼츠 카드(9:16) 생성 실패({e}) — MongoDB 저장/digest는 정상 완료됨.')
+    # 일간 쇼츠(9:16) 카드는 자동 생성 안 함(2026-10-03 사용자 요청) — 필요하면 수동으로
+    # `python 유튜브카드.py [date] --shorts` 실행.
 
 
 if __name__ == '__main__':
