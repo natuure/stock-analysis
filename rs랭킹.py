@@ -202,6 +202,18 @@ def fetch_category_cache_map(db):
     return out
 
 
+def merge_category_maps(cache_map, ai_map):
+    """카테고리 맵 병합 — 1순위 ai_analysis, 2순위 rs_category_cache. 단 ai_analysis 쪽이 `기타`
+    (일간 분석에서 못 맞춘 종목)인데 캐시에 `기타`가 아닌 분류가 있으면 캐시를 쓴다 — 나중에
+    사용자가 정한 분류가 일간 분석의 `기타`에 가려지지 않게 하기 위함(2026-10-31, 골프존홀딩스처럼
+    캐시는 `지주사`인데 과거 일간 분석 `기타`가 이기던 문제)."""
+    merged = {**cache_map, **ai_map}
+    for name, info in cache_map.items():
+        if info['카테고리'] != '기타' and merged[name]['카테고리'] == '기타':
+            merged[name] = info
+    return merged
+
+
 def report_stale_category_cache(db):
     """rs_category_cache 전체를 훑어 카테고리 값이 더 이상 저장분석.VALID_CATEGORIES에
     없는 문서(카테고리 목록 개편으로 무효화된 캐시)를 콘솔에 보고만 한다 —
@@ -251,7 +263,7 @@ def rs_ranking(db):
 
     cat_map_ai = fetch_global_category_map()       # 1순위: ai_analysis(항상 최신)
     cat_map_cache = fetch_category_cache_map(db)    # 2순위: rs_category_cache(영속 폴백)
-    cat_map = {**cat_map_cache, **cat_map_ai}       # 뒤 인자가 우선 — ai_analysis가 있으면 그걸로 덮어씀
+    cat_map = merge_category_maps(cat_map_cache, cat_map_ai)  # ai_analysis 우선(단 ai가 '기타'면 캐시의 확정 분류 우선)
     주간분석.attach_categories(top, cat_map)
 
     matched_ai = sum(1 for s in top if s['name'] in cat_map_ai)
