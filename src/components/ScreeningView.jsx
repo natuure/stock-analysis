@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { TrendChart, TREND_PALETTE } from './TrendChart';
 
 // 상단 "종목스크리닝" 탭의 내용(2026-10-31 도입, 구 "조건 검색" 빈 탭 이름 변경 후 채움).
@@ -8,6 +8,9 @@ import { TrendChart, TREND_PALETTE } from './TrendChart';
 // "종목스크리닝.py" 절 참고.
 const TREND_WEEKS = 10;       // 추이 차트·표에 보여줄 최근 주차 수
 const TREND_TOP_CATEGORIES = 5; // 업종 추이 차트에 그릴 선택 주차의 상위 업종 수
+const VISIBLE_ROWS = 5;         // 업종별 분포·전체 종목은 위에서 5개 업종만 보이고 나머지는 스크롤
+const PEEK = 14;                // 6번째 항목을 살짝 걸쳐 보여 스크롤할 수 있다는 표시를 줌(px)
+const OTHER = '기타';           // 분류 못 한 종목 묶음 — 최다 업종에서 제외, 분포·종목 목록에서는 맨 아래
 
 const weekLabel = (w) => w.weekKey.split('-')[1];                     // "2026-W44" → "W44"
 const mmdd = (iso) => iso.slice(5).replace('-', '/');                 // "2026-10-26" → "10/26"
@@ -20,10 +23,30 @@ function weekRange(w) {
 }
 const countOf = (w, category) => w.categoryCounts.find(c => c.category === category)?.count || 0;
 
+// 목록의 처음 VISIBLE_ROWS개 항목 높이만큼만 보이게 maxHeight를 맞춘다 — 항목마다 높이가 달라
+// (전체 종목은 칩 줄 수가 업종마다 다름) CSS 고정 높이로는 "5개"가 안 되므로 렌더 후 실측한다.
+function useVisibleRows(ref, deps) {
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const fit = () => {
+      const kids = el.children;
+      if (kids.length <= VISIBLE_ROWS) { el.style.maxHeight = ''; return; }
+      const last = kids[VISIBLE_ROWS - 1];
+      el.style.maxHeight = `${last.offsetTop + last.offsetHeight - kids[0].offsetTop + PEEK}px`;
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  }, deps); // eslint-disable-line react-hooks/exhaustive-deps
+}
+
 function DistributionBars({ week }) {
+  const ref = useRef(null);
+  useVisibleRows(ref, [week.weekKey]);
   const max = Math.max(...week.categoryCounts.map(c => c.count), 1);
   return (
-    <div className="scr-bars">
+    <div className="scr-bars scr-scroll" ref={ref}>
       {week.categoryCounts.map(c => (
         <div className="scr-bar-row" key={c.category}>
           <span className="scr-bar-name">{c.category}</span>
@@ -36,8 +59,10 @@ function DistributionBars({ week }) {
 }
 
 function StockGroups({ week }) {
+  const ref = useRef(null);
+  useVisibleRows(ref, [week.weekKey]);
   return (
-    <div className="scr-groups">
+    <div className="scr-groups scr-scroll" ref={ref}>
       {week.categoryCounts.map(c => (
         <div className="scr-group" key={c.category}>
           <div className="scr-group-title">{c.category}<span>{c.count}</span></div>
@@ -126,6 +151,14 @@ export default function ScreeningView() {
     }
 
     const week = weeks[idx];
+    // 업종별 분포·전체 종목은 "기타"를 맨 아래로 보내고, 최다 업종은 "기타"를 빼고 고른다
+    // ("기타"는 업종이 아니라 분류 못 한 종목 묶음이라 1위로 보여주면 의미가 없음).
+    const ordered = [
+      ...week.categoryCounts.filter(c => c.category !== OTHER),
+      ...week.categoryCounts.filter(c => c.category === OTHER),
+    ];
+    const shownWeek = { ...week, categoryCounts: ordered };
+    const topCategory = ordered.find(c => c.category !== OTHER);
     const prev = idx > 0 ? weeks[idx - 1] : null;
     const diff = prev ? week.total - prev.total : null;
     const recent = weeks.slice(-TREND_WEEKS);
@@ -152,8 +185,8 @@ export default function ScreeningView() {
           </div>
           <div className="card scr-stat">
             <div className="scr-stat-label">최다 업종</div>
-            <div className="scr-stat-value scr-stat-text">{week.categoryCounts[0]?.category || '-'}</div>
-            <div className="scr-stat-sub flat">{week.categoryCounts[0]?.count || 0}개</div>
+            <div className="scr-stat-value scr-stat-text">{topCategory?.category || '-'}</div>
+            <div className="scr-stat-sub flat">{topCategory?.count || 0}개</div>
           </div>
           <div className="card scr-stat">
             <div className="scr-stat-label">기준일</div>
@@ -163,10 +196,10 @@ export default function ScreeningView() {
         </div>
 
         <h3 className="sec-subtitle">업종별 분포</h3>
-        <div className="card"><DistributionBars week={week} /></div>
+        <div className="card"><DistributionBars week={shownWeek} /></div>
 
         <h3 className="sec-subtitle">전체 종목 ({week.total}개)</h3>
-        <div className="card"><StockGroups week={week} /></div>
+        <div className="card"><StockGroups week={shownWeek} /></div>
 
         <h2 className="sec-title">주차별 추이</h2>
         <TrendChart

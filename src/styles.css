@@ -617,6 +617,8 @@ tbody tr.chart-row td { text-align: left; white-space: normal; padding: 0; }
 .scr-bar-num { text-align: right; font-weight: 700; color: var(--c-heading); font-variant-numeric: tabular-nums; }
 .scr-bar-num em { font-style: normal; font-weight: 400; font-size: 11px; color: var(--c-muted); margin-left: 4px; }
 .scr-groups { display: flex; flex-direction: column; gap: 16px; }
+/* 업종별 분포·전체 종목: 5개 업종 높이로 잘라 세로 스크롤(높이는 ScreeningView의 useVisibleRows가 실측해 maxHeight로 지정) */
+.scr-scroll { position: relative; overflow-y: auto; padding-right: 8px; -webkit-overflow-scrolling: touch; }
 .scr-group-title { font-size: 13px; font-weight: 700; color: var(--c-heading); margin-bottom: 7px; }
 .scr-group-title span { margin-left: 6px; font-size: 12px; font-weight: 600; color: var(--c-primary); }
 .scr-chips { display: flex; flex-wrap: wrap; gap: 6px; }
