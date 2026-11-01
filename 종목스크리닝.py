@@ -2,6 +2,8 @@
 종목스크리닝 주간 저장 스크립트 (/종목스크리닝 스킬의 2단계)
 사용법: python 종목스크리닝.py            # 저장 (이미 그 주차 데이터가 있으면 알림만 하고 종료)
         python 종목스크리닝.py --dry-run  # 저장 없이 주차·분류 결과만 미리보기
+        python 종목스크리닝.py --refresh-fin [weekKey] [--dry-run]
+                                          # 이미 저장된 주차(기본 최신)의 종목별 실적(fin)만 DART로 다시 받아 갱신
 
 /종목서칭 스킬(주식자동매매 프로젝트, 일봉 이동평균 정배열 스크리닝)이 만든
 `분석결과/종목서칭_{기준일}.csv` 중 가장 최근 파일을 읽어, 종목을 카테고리(저장분석.
@@ -21,21 +23,31 @@ stock_screening 컬렉션(_id = weekKey, 예: "2026-W44")에 저장한다. 웹�
 이 스크립트는 Claude를 호출하지 못하므로, Claude Code가 그 종목들을 본업·최근 뉴스 기준으로
 분류(불확실하면 WebSearch)해 rs_category_cache에 upsert한 뒤 이 스크립트를 다시 실행한다
 (DATA_PIPELINE.md "종목스크리닝.py" 절 참고).
+
+종목별 실적(`fin`, 2026-10-31 도입): 저장할 때 DART로 종목마다 연간(가장 최근 사업보고서의 당기 vs 전기)과
+분기(가장 최근 분기보고서의 당 분기 3개월 vs 전년 동기 3개월) 영업이익·매출액·순이익·자본을 받아
+영업이익 성장률·영업이익률·ROE를 계산해 stocks[i].fin에 같이 저장한다(웹앱 "실적 분포" 차트용).
+계산식·제외 사유는 derive_metrics() 참고. DART_API_KEY가 없거나 종목별 조회가 실패하면 그 종목의
+fin만 비워 두고 계속 진행한다.
 """
 
 import csv
 import glob
+import json
 import os
 import re
 import sys
+import time
 from datetime import date, datetime, timedelta
 
+import requests
 from dotenv import load_dotenv
 from pymongo import MongoClient
 
 import 저장분석  # VALID_CATEGORIES 단일 진실 공급원
 import 주간분석  # week_key()/monday_of()/attach_categories() 재사용
 import rs랭킹    # fetch_global_category_map()/fetch_category_cache_map() 재사용
+import 종목분석  # DART 계정명 후보 상수·fetch_financial_statement()·extract_account() 재사용
 
 if sys.stdout.encoding != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -105,11 +117,240 @@ def count_by_category(stocks):
             for c, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]
 
 
+# ── 종목별 실적(fin): DART에서 연간·분기 영업이익 성장률/영업이익률/ROE ─────────────────────
+# DART fnlttSinglAcntAll 필드 의미(삼성전자로 직접 확인, 2026-10-31):
+#   사업보고서 IS/BS : thstrm_amount = 당기(말), frmtrm_amount = 전기(말)  → 보고서 1건에 두 해가 같이 옴
+#   반기·3분기 IS    : thstrm_amount = 당 분기 3개월, frmtrm_q_amount = 전년 동기 3개월
+#                      (thstrm_add_amount/frmtrm_add_amount는 누적)
+#   1분기 IS         : 3개월/누적 구분이 없어 전년 동기가 frmtrm_amount일 수 있음 → frmtrm_q_amount 우선, 없으면 frmtrm_amount
+#   BS               : thstrm_amount = 보고서 기준 기말
+# 같은 계정명이 자본변동표(SCE)에도 있으므로 손익은 IS(없으면 CIS), 자본은 BS로 sj_div를 한정한다.
+EOK = 1e8  # 원 → 억원
+ANNUAL_CODE = '11011'
+QUARTER_CODES = (('11014', 3), ('11012', 2), ('11013', 1))  # 최신 보고서부터 프로브: 3분기 → 반기 → 1분기
+DART_SLEEP = 0.2
+FIN_RETRIES = 3
+IS_DIVS = ('IS', 'CIS')  # 손익계산서만 따로 안 내고 포괄손익계산서(CIS) 하나로 내는 회사가 많음
+# 종목분석.py의 후보 목록에 W44 69종목 실측으로 확인한 표기(2026-10-31)를 더한다. 종목분석.py 쪽 상수는 건드리지 않고
+# 여기서만 확장한다(그 상수는 종목 분석 탭·즉석분석 로직과 1:1로 맞춰져 있음).
+#  - 매출: K-IFRS 1115 이후 최상단 라인을 그냥 '수익'으로 쓰는 회사가 가장 많음(케이씨텍·엑시콘·서산 등 20여 곳),
+#          타이거일렉은 '매출액(매출액)'. 보험사는 매출 라인 자체가 없어 의도적으로 산출 불가(noData) 처리.
+#  - 순이익: 이니텍 '연결당기순이익(손실)', KPX케미칼 '반기순손익'. 펌텍코리아처럼 합계 줄 없이 지배기업 귀속분만 있는
+#          회사는 NET_INCOME_FALLBACK(지배기업 귀속 순이익)으로 대신한다(자본도 지배기업 기준이라 ROE 정의와 일관).
+#  - 자본: 지배기업지분 / 지배기업의 소유주에게 귀속되는 지분 표기를 추가(없으면 자본총계로 폴백).
+REVENUE_NAMES = 종목분석.REVENUE_NAMES + ['수익', '매출액(매출액)']
+NET_INCOME_NAMES = 종목분석.NET_INCOME_NAMES + [
+    '연결당기순이익(손실)', '연결분기순이익(손실)', '연결반기순이익(손실)', '당기순손익(손실)', '분기순손익', '반기순손익']
+NET_INCOME_FALLBACK = [
+    '지배기업의 소유주에게 귀속되는 당기순이익(손실)', '지배기업의 소유주에게 귀속되는 당기순이익',
+    '지배기업의 소유주에게 귀속되는 분기순이익(손실)', '지배기업의 소유주에게 귀속되는 분기순이익',
+    '지배기업의 소유주에게 귀속되는 반기순이익(손실)', '지배기업의 소유주에게 귀속되는 반기순이익',
+    '지배기업소유주지분순이익', '지배기업소유주지분 순이익']
+PARENT_EQUITY_NAMES = 종목분석.PARENT_EQUITY_NAMES + ['지배기업지분', '지배기업의 소유주에게 귀속되는 지분']
+
+
+def _num(v):
+    try:
+        return float(str(v).replace(',', ''))
+    except (TypeError, ValueError):
+        return None
+
+
+def extract_pair(items, names, sj_divs, prev_fields):
+    """(당기, 전기/전년동기) 금액 쌍(원 단위) 추출. sj_divs 순서대로, 그 안에서 names 후보에 처음 일치하는
+    계정을 쓰고 전기 값은 prev_fields 순서로 처음 있는 값을 쓴다. 못 찾으면 (None, None)."""
+    for sj in sj_divs:
+        for it in items:
+            if it.get('sj_div') != sj or it.get('account_nm') not in names:
+                continue
+            cur = _num(it.get('thstrm_amount'))
+            if cur is None:
+                continue
+            prev = next((v for v in (_num(it.get(f)) for f in prev_fields) if v is not None), None)
+            return cur, prev
+    return None, None
+
+
+def _eok(v):
+    return None if v is None else round(v / EOK)
+
+
+def derive_metrics(rev, rev_prev, op, op_prev, ni, equity):
+    """원 단위 입력 → fin 한 칸(연간 또는 분기)의 억원 원자료 + 파생값 + 차트 제외 사유.
+      opGrowth = (영업이익 − 전년) / 전년 × 100   (전년 영업이익 > 0 일 때만)
+      opMargin = 영업이익 / 매출액 × 100
+      roe      = 당기순이익 / 자본 × 100          (자본 = 지배기업소유주지분, 없으면 자본총계 — StockAnalysis.jsx와 동일,
+                                                  분기도 연환산하지 않고 그 기간 실적 그대로)
+    skip(차트 제외 사유, 우선순위 순): noData(영업이익·전년·매출·순이익·자본 중 하나라도 없음 — 금융업 등)
+      > prevOpLoss(전년 영업이익 ≤ 0) > roeNegative(ROE < 0)."""
+    out = {'revenue': _eok(rev), 'revenuePrev': _eok(rev_prev), 'opIncome': _eok(op), 'opIncomePrev': _eok(op_prev),
+           'netIncome': _eok(ni), 'equity': _eok(equity), 'opGrowth': None, 'opMargin': None, 'roe': None, 'skip': None}
+    if rev is not None and rev > 0 and op is not None:
+        out['opMargin'] = round(op / rev * 100, 1)
+    if op is not None and op_prev is not None and op_prev > 0:
+        out['opGrowth'] = round((op - op_prev) / op_prev * 100, 1)
+    if ni is not None and equity is not None and equity > 0:
+        out['roe'] = round(ni / equity * 100, 1)
+    if out['opMargin'] is None or op_prev is None or out['roe'] is None:
+        out['skip'] = 'noData'
+    elif out['opGrowth'] is None:
+        out['skip'] = 'prevOpLoss'
+    elif out['roe'] < 0:
+        out['skip'] = 'roeNegative'
+    return out
+
+
+def _statement_pair(items, prev_fields):
+    """보고서 하나에서 손익(당기·전기)과 기말 자본을 뽑아 derive_metrics 입력으로 넘긴다."""
+    rev, rev_prev = extract_pair(items, REVENUE_NAMES, IS_DIVS, prev_fields)
+    op, op_prev = extract_pair(items, 종목분석.OPERATING_INCOME_NAMES, IS_DIVS, prev_fields)
+    ni, _ = extract_pair(items, NET_INCOME_NAMES, IS_DIVS, prev_fields)
+    if ni is None:
+        ni, _ = extract_pair(items, NET_INCOME_FALLBACK, IS_DIVS, prev_fields)
+    equity, _ = extract_pair(items, PARENT_EQUITY_NAMES, ('BS',), ())
+    if equity is None:
+        equity, _ = extract_pair(items, ['자본총계'], ('BS',), ())
+    return derive_metrics(rev, rev_prev, op, op_prev, ni, equity)
+
+
+def fetch_annual_fin(corp_code, today):
+    """가장 최근 사업보고서(올해 보고서는 내년 3월에야 나오므로 작년·재작년만 프로브)의 당기 vs 전기."""
+    for year in (today.year - 1, today.year - 2):
+        items, fs_div = 종목분석.fetch_financial_statement(corp_code, year, ANNUAL_CODE, 'CFS')
+        time.sleep(DART_SLEEP)
+        if items:
+            m = _statement_pair(items, ('frmtrm_amount',))
+            return {'label': f'{year} vs {year - 1}', 'year': year, 'fsDiv': fs_div, **m}
+    return None
+
+
+def fetch_quarter_fin(corp_code, today):
+    """가장 최근 분기보고서(올해 3분기 → 반기 → 1분기, 없으면 작년)의 당 분기 3개월 vs 전년 동기 3개월."""
+    for year in (today.year, today.year - 1):
+        for code, q in QUARTER_CODES:
+            items, fs_div = 종목분석.fetch_financial_statement(corp_code, year, code, 'CFS')
+            time.sleep(DART_SLEEP)
+            if items:
+                m = _statement_pair(items, ('frmtrm_q_amount', 'frmtrm_amount'))
+                return {'label': f'{year} {q}Q vs {year - 1} {q}Q', 'period': f'{year} {q}Q',
+                        'year': year, 'q': q, 'fsDiv': fs_div, **m}
+    return None
+
+
+def load_code_to_corp():
+    """KRX 종목코드 → DART corp_code. 로컬 캐시(_dart_corp_codes.json)만 쓴다 — 없으면 새로 받는 로직이
+    FDR(KRX) 호출을 하므로 여기서는 실행하지 않고 빈 매핑을 돌려준다."""
+    path = 종목분석.CORP_CODE_CACHE
+    if not os.path.exists(path):
+        return {}
+    with open(path, encoding='utf-8') as f:
+        return {v['stock_code']: v for v in json.load(f).values()}
+
+
+def fetch_all_fin(stocks):
+    """stocks(code·name 보유) 전체의 fin을 {종목코드: fin 또는 None}으로 반환. 종목 단위 실패는 건너뛴다."""
+    if not 종목분석.DART_API_KEY:
+        print('[경고] DART_API_KEY가 없어 종목별 실적(fin) 수집을 건너뜁니다.')
+        return {}
+    code_to_corp = load_code_to_corp()
+    if not code_to_corp:
+        print(f'[경고] {종목분석.CORP_CODE_CACHE}가 없어 종목별 실적(fin) 수집을 건너뜁니다.')
+        return {}
+    today = date.today()
+    result, failed = {}, []
+    t0 = time.time()
+    for i, s in enumerate(stocks, 1):
+        corp = code_to_corp.get(s['code'])
+        if not corp:
+            result[s['code']] = None
+            print(f"  {s['name']}({s['code']}): DART corp_code 매핑 없음")
+            continue
+        for attempt in range(1, FIN_RETRIES + 1):  # 일시적 네트워크 오류는 재시도(2026-11-01 W44 백필에서 28종목이 한꺼번에 실패)
+            try:
+                result[s['code']] = {'annual': fetch_annual_fin(corp['corp_code'], today),
+                                     'quarter': fetch_quarter_fin(corp['corp_code'], today)}
+                break
+            except (requests.RequestException, ValueError) as e:
+                if attempt == FIN_RETRIES:
+                    result[s['code']] = None
+                    failed.append(s['code'])
+                    print(f"  {s['name']}({s['code']}): 조회 실패({FIN_RETRIES}회) — {e}")
+                else:
+                    time.sleep(2 * attempt)
+        if i % 20 == 0:
+            print(f'  실적 수집 {i}/{len(stocks)} ({time.time() - t0:.0f}s)', flush=True)
+    print(f'종목별 실적(fin) 수집 완료: {len(result)}종목 중 실패 {len(failed)}, {time.time() - t0:.0f}s')
+    return result
+
+
+def summarize_fin(fin_map):
+    """수집 결과 요약 출력: 탭별 차트 표시 수와 제외 사유 분포, 분기 라벨 분포."""
+    for kind, title in (('annual', '연간'), ('quarter', '분기')):
+        rows = [(f or {}).get(kind) for f in fin_map.values()]
+        have = [r for r in rows if r]
+        reasons = {}
+        for r in have:
+            if r['skip']:
+                reasons[r['skip']] = reasons.get(r['skip'], 0) + 1
+        plotted = sum(1 for r in have if not r['skip'])
+        print(f"[{title}] 보고서 {len(have)}/{len(rows)} · 차트 표시 {plotted} · 제외 {reasons or '-'}")
+        if kind == 'quarter':
+            labels = {}
+            for r in have:
+                labels[r['period']] = labels.get(r['period'], 0) + 1
+            print(f'  분기 분포: {dict(sorted(labels.items(), reverse=True))}')
+
+
+def refresh_fin(db, dry_run):
+    """이미 저장된 주차(--refresh-fin 뒤 weekKey, 없으면 가장 최근 주차)의 stocks[*].fin만 새로 받아 갱신한다.
+    업종·종목 구성 등 다른 필드는 건드리지 않는다."""
+    args = sys.argv[sys.argv.index('--refresh-fin') + 1:]
+    if args and not args[0].startswith('--'):
+        week_key = args[0]
+    else:
+        keys = [d['_id'] for d in db[SCREENING_COLLECTION].find({}, {'_id': 1})]
+        if not keys:
+            print('[오류] 저장된 stock_screening 주차가 없습니다.')
+            return
+        week_key = max(keys, key=lambda k: tuple(int(x) for x in re.findall(r'\d+', k)))
+    doc = db[SCREENING_COLLECTION].find_one({'_id': week_key})
+    if not doc:
+        print(f'[오류] {week_key} 주차 문서가 없습니다.')
+        return
+    print(f"{week_key} 종목별 실적(fin) 갱신: {len(doc['stocks'])}종목 (기준일 {doc.get('asOfDate')})")
+    fin_map = fetch_all_fin(doc['stocks'])
+    if not fin_map:
+        return
+    summarize_fin(fin_map)
+    if dry_run:
+        print('[dry-run] 저장하지 않았습니다.')
+        return
+    kept = 0
+    for s in doc['stocks']:
+        new = fin_map.get(s['code'])
+        if new is None:
+            kept += 1 if s.get('fin') else 0  # 실패한 종목은 이전에 받아 둔 fin을 지우지 않고 유지
+            continue
+        s['fin'] = new
+    if kept:
+        print(f'조회 실패로 이전 fin을 유지한 종목 {kept}개')
+    db[SCREENING_COLLECTION].update_one(
+        {'_id': week_key},
+        {'$set': {'stocks': doc['stocks'], 'finFetchedAt': datetime.now().isoformat(timespec='seconds')}})
+    print(f'MongoDB 갱신 완료: {SCREENING_COLLECTION}/{week_key} (fin)')
+
+
 def main():
     dry_run = '--dry-run' in sys.argv
     if not MONGODB_URI:
         print('[오류] MONGODB_URI가 없어 진행할 수 없습니다 (.env.local 확인).')
         sys.exit(1)
+
+    if '--refresh-fin' in sys.argv:
+        client = MongoClient(MONGODB_URI)
+        refresh_fin(client.get_default_database(), dry_run)
+        client.close()
+        return
 
     week_key, monday = resolve_target_week()
     print(f'저장 대상 주차: {week_key} ({monday} ~ {monday + timedelta(days=6)}), 오늘 {date.today()}')
@@ -155,8 +396,14 @@ def main():
         client.close()
         return
 
+    fin_map = fetch_all_fin(stocks)
+    if fin_map:
+        summarize_fin(fin_map)
     doc_stocks = [{k: s[k] for k in ('code', 'name', 'market', 'close', 'marcap', '카테고리', '신규카테고리후보') if k in s}
                   for s in stocks]  # 시가총액 내림차순(CSV 원본 순서) 유지
+    for ds in doc_stocks:
+        if fin_map.get(ds['code']):
+            ds['fin'] = fin_map[ds['code']]
     db[SCREENING_COLLECTION].insert_one({
         '_id': week_key,
         'weekKey': week_key,
@@ -167,6 +414,7 @@ def main():
         'categoryCounts': counts,
         'stocks': doc_stocks,
         'savedAt': datetime.now().isoformat(timespec='seconds'),
+        **({'finFetchedAt': datetime.now().isoformat(timespec='seconds')} if fin_map else {}),
     })
     print(f'MongoDB 저장 완료: {SCREENING_COLLECTION}/{week_key} ({len(stocks)}종목, 기준일 {as_of})')
     client.close()

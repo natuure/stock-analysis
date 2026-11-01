@@ -679,6 +679,7 @@ python rs랭킹.py   # 아무 때나 실행 가능 (주간분석.py와 독립된
 ```bash
 python 종목스크리닝.py            # 저장 (/종목스크리닝 스킬이 /종목서칭 실행 후 호출)
 python 종목스크리닝.py --dry-run  # 저장 없이 주차·분류 결과만 미리보기
+python 종목스크리닝.py --refresh-fin [weekKey] [--dry-run]  # 저장된 주차(기본 최신)의 종목별 실적(fin)만 DART로 다시 받아 갱신
 ```
 - **입력**: `/종목서칭` 스킬(`~/.claude/commands/종목서칭.md`, 주식자동매매 프로젝트의
   `scratch_stock_search.py` — 일봉 종가 ≥ 50일선, 50일선 > 150일선·200일선, 시총 1,000억 이상, **최근 1년 내 액면병합 종목 제외**(2026-10-31 추가, `--merge-lookback-days`; 이미 저장된
@@ -705,9 +706,34 @@ python 종목스크리닝.py --dry-run  # 저장 없이 주차·분류 결과만
   캐시는 RS랭킹과 공유한다(이름은 RS지만 종목명→카테고리 영속 캐시로 동일하게 쓰임).
 - **저장 위치**: MongoDB `stock_screening` 컬렉션, 주차마다 문서 1개(`_id`=weekKey, `insert_one`) —
   `{weekKey, weekStart, asOfDate, condition, total, categoryCounts: [{category, count}, ...개수 내림차순],
-  stocks: [{code, name, market, close, marcap, 카테고리, 신규카테고리후보?}, ...시총 내림차순], savedAt}`.
+  stocks: [{code, name, market, close, marcap, 카테고리, 신규카테고리후보?, fin?}, ...시총 내림차순], savedAt, finFetchedAt?}`.
   `api/getScreening.js`가 전부 읽어 (연도, 주차) 숫자 순으로 정렬해 반환하고, 프론트엔드
   `ScreeningView.jsx`가 주차 선택·종목 수 추이·업종 추이를 계산한다([FRONTEND.md](FRONTEND.md) 참고).
+- **종목별 실적 `fin`(2026-10-31 도입, "실적 분포" 차트용)**: 저장할 때(그리고 `--refresh-fin`으로 기존 주차에) DART
+  `fnlttSinglAcntAll`로 종목마다 **연간**(가장 최근 사업보고서의 당기 vs 전기 — 올해 보고서는 내년 3월에야 나오므로
+  작년·재작년 순으로 프로브)과 **분기**(올해 3분기→반기→1분기 순으로 가장 먼저 있는 보고서의 당 분기 3개월 vs 전년 동기
+  3개월, 올해가 없으면 작년)를 받아 `stocks[i].fin = {annual, quarter}`에 저장한다. 각 칸: `label`("2025 vs 2024" /
+  "2026 2Q vs 2025 2Q"), `period`(분기만), `fsDiv`(CFS 우선·없으면 OFS), 원자료(억원: `revenue`·`revenuePrev`·
+  `opIncome`·`opIncomePrev`·`netIncome`·`equity`), 파생값(`opGrowth`·`opMargin`·`roe`, %, 소수 첫째 자리), `skip`.
+  - **DART 필드 의미(삼성전자로 직접 확인, 2026-10-31)**: 사업보고서 IS/BS는 `thstrm_amount`=당기(말)·`frmtrm_amount`=
+    전기(말)라 **보고서 1건에 두 해가 같이 옴**. 반기·3분기 IS는 `thstrm_amount`=당 분기 3개월, **`frmtrm_q_amount`=전년 동기
+    3개월**(`*_add_amount`는 누적). 1분기 IS는 3개월/누적 구분이 없을 수 있어 `frmtrm_q_amount` 우선·없으면 `frmtrm_amount`
+    (1분기 보고서로는 아직 실측 못 함). 손익은 `sj_div` IS→CIS 순(같은 계정명이 자본변동표 SCE에도 있고, 손익계산서 없이
+    포괄손익계산서(CIS) 하나만 내는 회사가 많음), 자본은 BS.
+  - **계산식(파생값은 Python 한 곳에서만 계산, 프론트는 표시만 — `derive_metrics()`)**: `opGrowth`=(영업이익−전년)÷전년×100
+    (전년 영업이익 > 0일 때만), `opMargin`=영업이익÷매출액×100, `roe`=당기순이익÷(지배기업소유주지분, 없으면 자본총계)×100
+    — "종목 분석" 탭(`StockAnalysis.jsx`)의 ROE 정의와 같고 **분기도 연환산하지 않는다**(그래서 분기 ROE는 값이 작음).
+  - **차트 제외 사유 `skip`(우선순위 순)**: `noData`(영업이익·전년·매출·순이익·자본 중 하나라도 없음 — 보험사처럼 매출 라인이
+    없는 금융업, DART 전기 값이 빈 종목) > `prevOpLoss`(전년 영업이익 ≤ 0 — 흑자전환·적자지속) > `roeNegative`(ROE < 0).
+    화면은 이 종목들을 차트에서 빼고 차트 아래에 사유별로 이름을 나열한다.
+  - **계정명 후보는 `종목분석.py`의 상수에 W44 69종목 실측으로 확인한 표기를 더해 `종목스크리닝.py`에서만 확장**(종목 분석 탭·
+    즉석분석 로직과 1:1로 맞춘 그쪽 상수는 안 건드림): 매출 `수익`(K-IFRS 1115 이후 가장 흔함)·`매출액(매출액)`, 순이익
+    `연결당기순이익(손실)`·`반기순손익` 등과 지배기업 귀속 순이익 폴백(합계 줄 없는 회사), 자본 `지배기업지분` 등.
+  - **실패 처리**: 종목별 조회는 3회 재시도, 끝내 실패하면 그 종목 `fin`만 비움. `--refresh-fin`은 실패 종목의 이전 `fin`을
+    지우지 않고 유지(2026-11-01 W44 백필 중 네트워크 오류로 28종목이 한꺼번에 실패한 일이 있어 추가). `DART_API_KEY`·
+    `_dart_corp_codes.json`이 없으면 경고 후 fin 없이 저장(corp_code 캐시를 새로 받는 경로는 KRX(FDR)를 호출하므로 여기선 안 탐).
+  - 호출량: 종목당 약 5~8회 × 69종목, 0.2초 간격으로 1~2분(DART 일 한도 20,000회 대비 미미). 종목코드→corp_code는
+    `주도주분석.py`처럼 `_dart_corp_codes.json`의 `stock_code` 역매핑.
 - **스킬 파일**: `~/.claude/commands/종목스크리닝.md`(`/종목스크리닝`, 같은 내용을 프로젝트
   `.claude/commands/종목스크리닝.md`에도 커밋해 둠 — 고치면 두 곳을 같이 고칠 것) — 0) `--dry-run`으로 이미 했는지
   확인 → 1) `/종목서칭` 절차 실행 → 2) `python 종목스크리닝.py` → 3) 미분류 분류·재실행 → 4) 결과 보고.
