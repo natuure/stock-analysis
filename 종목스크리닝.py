@@ -213,28 +213,163 @@ def _statement_pair(items, prev_fields):
     return derive_metrics(rev, rev_prev, op, op_prev, ni, equity)
 
 
-def fetch_annual_fin(corp_code, today):
+def make_report_fetcher(corp_code):
+    """종목 하나의 DART 보고서 조회를 (연도, 보고서코드) 단위로 메모이즈한다 — 산점도용 fin(annual/quarter)과
+    비교표용 fin.hist가 같은 보고서를 여러 번 쓰므로 한 번만 받는다. 반환: get(year, reprt_code) → (items, fs_div)."""
+    cache = {}
+
+    def get(year, code):
+        if (year, code) not in cache:
+            cache[(year, code)] = 종목분석.fetch_financial_statement(corp_code, year, code, 'CFS')
+            time.sleep(DART_SLEEP)
+        return cache[(year, code)]
+    return get
+
+
+def fetch_annual_fin(get, today):
     """가장 최근 사업보고서(올해 보고서는 내년 3월에야 나오므로 작년·재작년만 프로브)의 당기 vs 전기."""
     for year in (today.year - 1, today.year - 2):
-        items, fs_div = 종목분석.fetch_financial_statement(corp_code, year, ANNUAL_CODE, 'CFS')
-        time.sleep(DART_SLEEP)
+        items, fs_div = get(year, ANNUAL_CODE)
         if items:
             m = _statement_pair(items, ('frmtrm_amount',))
             return {'label': f'{year} vs {year - 1}', 'year': year, 'fsDiv': fs_div, **m}
     return None
 
 
-def fetch_quarter_fin(corp_code, today):
+def fetch_quarter_fin(get, today):
     """가장 최근 분기보고서(올해 3분기 → 반기 → 1분기, 없으면 작년)의 당 분기 3개월 vs 전년 동기 3개월."""
     for year in (today.year, today.year - 1):
         for code, q in QUARTER_CODES:
-            items, fs_div = 종목분석.fetch_financial_statement(corp_code, year, code, 'CFS')
-            time.sleep(DART_SLEEP)
+            items, fs_div = get(year, code)
             if items:
                 m = _statement_pair(items, ('frmtrm_q_amount', 'frmtrm_amount'))
                 return {'label': f'{year} {q}Q vs {year - 1} {q}Q', 'period': f'{year} {q}Q',
                         'year': year, 'q': q, 'fsDiv': fs_div, **m}
     return None
+
+
+# ── 종목별 실적 비교표(fin.hist, 2026-11-05 도입): 연간 최근 3개년 + 분기 최근 8개 분기 ─────────────────
+# 각 기간 값: 매출·영업이익·당기순이익(억원)과 전년(동기) 값(*Prev, 화면의 YoY 색칠용), 기말 자본, ROE.
+# 보고서가 있는 기간만 담는다 — 3년 이내 상장 종목은 상장 전 연도/분기 보고서가 DART에 없으므로 자연히 빠진다
+# (사업보고서에 같이 실린 전기 값은 *Prev로만 쓰고 별도 기간으로 만들지 않음).
+# 4분기는 별도 보고서가 없어 "사업보고서(연간) − 3분기보고서 누적(9개월)"으로 계산한다(삼성전자 2025년으로 확인:
+# 3분기 IS thstrm_add_amount = 9개월 누적, frmtrm_add_amount = 전년 9개월 누적). 연간·3분기 보고서의 연결/별도
+# 구분이 다르면 섞지 않고 그 4분기는 비운다. 4분기 ROE의 자본은 연말(사업보고서 BS) 값.
+HIST_YEARS = 3
+HIST_QUARTERS = 8
+Q_CODES = {1: '11013', 2: '11012', 3: '11014'}
+HIST_ITEMS = (('revenue', REVENUE_NAMES), ('opIncome', 종목분석.OPERATING_INCOME_NAMES), ('netIncome', NET_INCOME_NAMES))
+
+
+def find_account(items, names, sj_divs):
+    """sj_divs 순서대로, names 후보에 처음 일치하고 당기 금액이 숫자인 계정 행을 돌려준다(없으면 None)."""
+    for sj in sj_divs:
+        for it in items:
+            if it.get('sj_div') == sj and it.get('account_nm') in names and _num(it.get('thstrm_amount')) is not None:
+                return it
+    return None
+
+
+def _first(it, fields):
+    """계정 행 it에서 fields 순서로 처음 숫자인 값(원 단위). 행이 없거나 다 비었으면 None."""
+    if not it:
+        return None
+    return next((v for v in (_num(it.get(f)) for f in fields) if v is not None), None)
+
+
+def hist_rows(items):
+    """보고서 하나에서 매출·영업이익·순이익 계정 행(dict)을 찾는다. 순이익은 합계 줄이 없으면 지배기업 귀속분."""
+    rows = {key: find_account(items, names, IS_DIVS) for key, names in HIST_ITEMS}
+    if rows['netIncome'] is None:
+        rows['netIncome'] = find_account(items, NET_INCOME_FALLBACK, IS_DIVS)
+    return rows
+
+
+def hist_equity(items):
+    it = find_account(items, PARENT_EQUITY_NAMES, ('BS',)) or find_account(items, ['자본총계'], ('BS',))
+    return _num(it.get('thstrm_amount')) if it else None
+
+
+def hist_point(period, cur, prev, equity, fs_div):
+    """원 단위 {revenue, opIncome, netIncome} 당기·전년 → 억원 기간 한 칸. ROE = 순이익 ÷ 기말 자본 × 100
+    (분기도 연환산하지 않음 — 산점도 fin과 같은 정의)."""
+    out = {'period': period, 'fsDiv': fs_div, 'equity': _eok(equity), 'roe': None}
+    for key, _ in HIST_ITEMS:
+        out[key] = _eok(cur.get(key))
+        out[key + 'Prev'] = _eok(prev.get(key))
+    ni = cur.get('netIncome')
+    if ni is not None and equity is not None and equity > 0:
+        out['roe'] = round(ni / equity * 100, 1)
+    return out
+
+
+def _report_point(period, items, fs_div, prev_fields):
+    rows = hist_rows(items)
+    cur = {k: _first(it, ('thstrm_amount',)) for k, it in rows.items()}
+    prev = {k: _first(it, prev_fields) for k, it in rows.items()}
+    return hist_point(period, cur, prev, hist_equity(items), fs_div)
+
+
+def fetch_annual_hist(get, today):
+    """최근 HIST_YEARS개 연도 칸(작년부터 거꾸로, 최대 1년 더 프로브 — 1~3월엔 작년 보고서가 아직 없음).
+    창은 가장 최근 사업보고서가 있는 해부터 HIST_YEARS개 연도로 고정하고, 그 안에서 보고서가 없는 해(상장 전·
+    DART 누락)는 담지 않는다. 오래된 해 → 최근 해 순서."""
+    out, slots = [], 0
+    for year in range(today.year - 1, today.year - 2 - HIST_YEARS, -1):
+        items, fs_div = get(year, ANNUAL_CODE)
+        if items:
+            out.append(_report_point(str(year), items, fs_div, ('frmtrm_amount',)))
+        if items or slots:
+            slots += 1
+        if slots == HIST_YEARS:
+            break
+    return out[::-1]
+
+
+def _q4_point(get, year):
+    """4분기 = 사업보고서 − 3분기보고서 누적. 사업보고서가 없으면 'missing', 계산 불가(3분기보고서 없음·연결/별도
+    불일치)면 None."""
+    a_items, a_div = get(year, ANNUAL_CODE)
+    if not a_items:
+        return 'missing'
+    q3_items, q3_div = get(year, Q_CODES[3])
+    if not q3_items or q3_div != a_div:
+        return None
+    a_rows, q3_rows = hist_rows(a_items), hist_rows(q3_items)
+    cur, prev = {}, {}
+    for key, _ in HIST_ITEMS:
+        a_cur, a_prev = _first(a_rows[key], ('thstrm_amount',)), _first(a_rows[key], ('frmtrm_amount',))
+        c9, p9 = _first(q3_rows[key], ('thstrm_add_amount',)), _first(q3_rows[key], ('frmtrm_add_amount',))
+        cur[key] = a_cur - c9 if a_cur is not None and c9 is not None else None
+        prev[key] = a_prev - p9 if a_prev is not None and p9 is not None else None
+    return hist_point(f'{year} 4Q', cur, prev, hist_equity(a_items), a_div)
+
+
+def fetch_quarter_hist(get, today):
+    """최근 HIST_QUARTERS개 분기 칸(올해 4분기부터 거꾸로 4년치를 프로브, 아직 안 나온 최신 보고서는 건너뜀).
+    창은 가장 최근 분기 보고서가 있는 분기부터 HIST_QUARTERS개 분기로 고정하고, 그 안에서 보고서가 없는 분기
+    (상장 전·DART 누락 — 방림은 2026 1Q가 DART에 없음, 2026-11-05 확인)와 4분기 계산 불가 분기는 담지 않는다.
+    오래된 분기 → 최근 분기 순서."""
+    out, slots = [], 0
+    for year in range(today.year, today.year - 4, -1):
+        for q in (4, 3, 2, 1):
+            if q == 4:
+                p = _q4_point(get, year)
+                missing = p == 'missing'
+                if missing:
+                    p = None
+            else:
+                items, fs_div = get(year, Q_CODES[q])
+                missing = not items
+                p = None if missing else _report_point(f'{year} {q}Q', items, fs_div, ('frmtrm_q_amount', 'frmtrm_amount'))
+            if missing and not slots:
+                continue  # 아직 제출 안 된 최신 분기
+            slots += 1
+            if p is not None:
+                out.append(p)
+            if slots == HIST_QUARTERS:
+                return out[::-1]
+    return out[::-1]
 
 
 def load_code_to_corp():
@@ -267,8 +402,11 @@ def fetch_all_fin(stocks):
             continue
         for attempt in range(1, FIN_RETRIES + 1):  # 일시적 네트워크 오류는 재시도(2026-11-01 W44 백필에서 28종목이 한꺼번에 실패)
             try:
-                result[s['code']] = {'annual': fetch_annual_fin(corp['corp_code'], today),
-                                     'quarter': fetch_quarter_fin(corp['corp_code'], today)}
+                get = make_report_fetcher(corp['corp_code'])
+                result[s['code']] = {'annual': fetch_annual_fin(get, today),
+                                     'quarter': fetch_quarter_fin(get, today),
+                                     'hist': {'annual': fetch_annual_hist(get, today),
+                                              'quarter': fetch_quarter_hist(get, today)}}
                 break
             except (requests.RequestException, ValueError) as e:
                 if attempt == FIN_RETRIES:
@@ -299,6 +437,12 @@ def summarize_fin(fin_map):
             for r in have:
                 labels[r['period']] = labels.get(r['period'], 0) + 1
             print(f'  분기 분포: {dict(sorted(labels.items(), reverse=True))}')
+    for kind, title in (('annual', '연간'), ('quarter', '분기')):  # 비교표(fin.hist) 기간 수 분포
+        lens = {}
+        for f in fin_map.values():
+            n = len(((f or {}).get('hist') or {}).get(kind) or [])
+            lens[n] = lens.get(n, 0) + 1
+        print(f"[비교표 {title}] 기간 수별 종목 수: {dict(sorted(lens.items(), reverse=True))}")
 
 
 def refresh_fin(db, dry_run):

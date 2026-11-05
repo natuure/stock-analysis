@@ -9,13 +9,13 @@ import { useState } from 'react';
 const KINDS = [{ key: 'annual', label: '연간' }, { key: 'quarter', label: '분기' }];
 
 // ROE 색 구간(순차 색상 5단계). ROE 음수는 차트에서 제외되므로 0 이상만 다룬다.
-// 분기 ROE는 프로젝트 규칙대로 연환산하지 않아 값이 작으므로 구간을 따로 둔다.
-const ROE_COLORS = ['#cfe0fd', '#9dc1fb', '#6aa3f8', '#3182f6', '#1b4fa3'];
-const ROE_BANDS = {
+// 분기 ROE는 프로젝트 규칙대로 연환산하지 않아 값이 작으므로 구간을 따로 둔다. EarningsTable(실적 비교표)도 같은 색·구간을 쓴다.
+export const ROE_COLORS = ['#cfe0fd', '#9dc1fb', '#6aa3f8', '#3182f6', '#1b4fa3'];
+export const ROE_BANDS = {
   annual: { edges: [5, 10, 15, 20], labels: ['5% 미만', '5~10%', '10~15%', '15~20%', '20% 이상'] },
   quarter: { edges: [2, 4, 6, 10], labels: ['2% 미만', '2~4%', '4~6%', '6~10%', '10% 이상'] },
 };
-const bandOf = (kind, roe) => ROE_BANDS[kind].edges.filter(e => roe >= e).length;
+export const bandOf = (kind, roe) => ROE_BANDS[kind].edges.filter(e => roe >= e).length;
 
 const W = 480, H = 320, PAD_L = 46, PAD_R = 26, PAD_T = 14, PAD_B = 36;
 const X_MIN = -100, X_MAX = 300; // x축(영업이익 성장률 %) 고정 범위 — 범위 밖 점은 가장자리에 삼각형으로 표시

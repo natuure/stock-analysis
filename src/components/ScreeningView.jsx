@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { TrendChart, TREND_PALETTE } from './TrendChart';
 import EarningsScatter from './EarningsScatter';
+import EarningsTable from './EarningsTable';
 
 // 상단 "종목스크리닝" 탭의 내용(2026-10-31 도입, 구 "조건 검색" 빈 탭 이름 변경 후 채움).
 // RsRankingView.jsx와 같은 패턴 — App.jsx의 상태 관리 없이 자체적으로 /api/getScreening을
@@ -265,6 +266,9 @@ export default function ScreeningView() {
 
         <h3 className="sec-subtitle">실적 분포</h3>
         <div className="card"><EarningsScatter stocks={week.stocks} /></div>
+
+        <h3 className="sec-subtitle">실적 비교표</h3>
+        <div className="card"><EarningsTable stocks={week.stocks} /></div>
 
         <h3 className="sec-subtitle">전체 종목 ({week.total}개)</h3>
         <div className="card"><StockGroups week={shownWeek} /></div>
